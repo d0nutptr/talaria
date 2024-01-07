@@ -1,0 +1,22 @@
+[package]
+name = "talaria"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-utils = "0.8"
+thiserror = "1"
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
+
+[[bench]]
+name = "channel"
+harness = false
+
+[profile.bench]
+debug = true
