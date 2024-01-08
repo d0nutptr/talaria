@@ -9,6 +9,7 @@ pub struct Reservation<'p, T> {
     ring_size: usize,
     start_index: usize,
     end_index: usize,
+    len: usize,
     partition_state: NonNull<PartitionStateInner>,
     inner: PhantomData<&'p ()>
 }
@@ -19,6 +20,7 @@ impl<T> Reservation<'_, T> {
         ring_size: usize,
         start_index: usize,
         end_index: usize,
+        len: usize,
         partition_state: NonNull<PartitionStateInner>,
     ) -> Self {
         Self {
@@ -26,17 +28,18 @@ impl<T> Reservation<'_, T> {
             ring_size,
             start_index,
             end_index,
+            len,
             partition_state,
             inner: PhantomData
         }
     }
 
     pub fn len(&self) -> usize {
-        self.end_index.wrapping_sub(self.start_index)
+        self.len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.start_index == self.end_index
+        self.len == 0
     }
 
     fn partition_state(&self) -> &PartitionStateInner {
@@ -49,7 +52,8 @@ impl<T> Reservation<'_, T> {
             ring_size: self.ring_size,
             start_index: self.start_index,
             end_index: self.end_index,
-            offset: 0,
+            reservation_size: self.len,
+            offset: self.start_index,
             inner_phantom: PhantomData
         }
     }
@@ -71,7 +75,8 @@ impl<T> Drop for Reservation<'_, T> {
             for _ in 0 .. SPIN {
                 std::hint::spin_loop();
             }
-            std::thread::yield_now(); // todo: should we remove this? should we get `wait` here and park?
+            // todo: we should probably consider doing something special if this is a concurrent reservation so we can make sure not to pound the CPU too hard
+            // std::thread::yield_now(); // todo: should we remove this? should we get `wait` here and park?
         }
 
         // todo: Switching from SeqCst to Release ordering here results in a massive performance improvement. test that this is safe
@@ -94,6 +99,7 @@ pub struct Iter<'r, T> {
     ring_size: usize,
     start_index: usize,
     end_index: usize,
+    reservation_size: usize,
     offset: usize,
     inner_phantom: PhantomData<&'r ()>
 }
@@ -130,22 +136,20 @@ impl<'r, T: 'r> Iterator for Iter<'r, T> {
     type Item = &'r T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.offset == self.len() {
+        if self.offset == self.end_index {
             return None;
         }
 
-        let virtual_address = self.get_virtual_address(self.offset);
-        let physical_address = self.get_physical_address(virtual_address);
+        let physical_address = self.get_physical_address(self.offset);
+        let element = unsafe { self.ring_ptr.add(physical_address).as_ref() };
 
         self.offset = self.offset.wrapping_add(1);
-
-        let element = unsafe { self.ring_ptr.add(physical_address).as_ref() };
 
         Some(element)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_length = self.len().wrapping_sub(self.offset);
+        let remaining_length = self.end_index.wrapping_sub(self.offset);
 
         (remaining_length, Some(remaining_length))
     }
@@ -155,6 +159,7 @@ trait ProjectedIndexing {
     fn len(&self) -> usize;
     /// Maps an offset `[0, usize::MAX]` to a virtual address `[self.start_index, usize::MAX]`
     fn get_virtual_address(&self, offset: usize) -> usize;
+
     /// Maps a virtual address `[0, usize::MAX]` to a physical address `[0, self.data.len())`
     fn get_physical_address(&self, virtual_address: usize) -> usize;
 }
@@ -175,7 +180,7 @@ impl<T> ProjectedIndexing for Reservation<'_, T> {
 
 impl<T> ProjectedIndexing for Iter<'_, T> {
     fn len(&self) -> usize {
-        self.end_index.wrapping_sub(self.start_index)
+        self.reservation_size
     }
 
     fn get_virtual_address(&self, offset: usize) -> usize {

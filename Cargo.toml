@@ -18,5 +18,5 @@ pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 name = "channel"
 harness = false
 
-[profile.bench]
+[profile.release]
 debug = true

@@ -118,6 +118,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             self.ring_size,
             reserved_index,
             new_reserved_index,
+            amount,
             self.partition_state
         ))
     }
@@ -152,6 +153,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             self.ring_size,
             reserved_index,
             new_reserved_index,
+            amount,
             self.partition_state
         ))
     }
@@ -220,6 +222,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             self.ring_size,
             reserved_index_val,
             new_reserved_index,
+            amount,
             self.partition_state
         ))
     }
@@ -258,6 +261,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             self.ring_size,
             reserved_index,
             new_reserved_index,
+            amount,
             self.partition_state
         ))
     }

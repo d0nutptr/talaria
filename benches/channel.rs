@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, Deref};
 use std::time::Instant;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use pprof::criterion::{Output, PProfProfiler};
@@ -30,14 +29,19 @@ impl<const L: usize> Display for BenchArgs<L> {
     }
 }
 
-fn benchmark_exclusive_partition<T>(channel: &Channel<usize>, partition_id: usize, chunk: usize, amount: usize) {
+fn benchmark_exclusive_partition(channel: &Channel<usize>, partition_id: usize, chunk: usize, amount: usize) {
     let mut partition = channel
         .get_exclusive_partition(partition_id)
         .unwrap();
 
-    for _ in 0 .. (amount / chunk) {
-        let reservation = partition.reserve(chunk).unwrap();
-        black_box(reservation);
+    for _ in 0 .. amount {
+        let mut reservation = partition.reserve(chunk).unwrap();
+
+        for elem in reservation.iter() {
+            black_box(elem);
+            // assert_eq!(reservation[idx], partition_id);
+            // reservation[idx] = 1 - partition_id;
+        }
     }
 }
 
@@ -63,7 +67,7 @@ fn run_two_exclusive_partitions_bench<const L: usize>(c: &mut Criterion, input: 
                 } = args;
 
                 let chunk_size = *chunk_size;
-                let objects = [1].repeat(*channel_size);
+                let objects = [0].repeat(*channel_size);
 
                 let channel = Channel::builder()
                     .add_exclusive_partition()
@@ -75,11 +79,11 @@ fn run_two_exclusive_partitions_bench<const L: usize>(c: &mut Criterion, input: 
 
                 // let iterations = 100_000_000;
                 let thread_one = std::thread::spawn(move || {
-                    benchmark_exclusive_partition::<String>(&channel, 0, chunk_size, iterations as usize)
+                    benchmark_exclusive_partition(&channel, 0, chunk_size, iterations as usize)
                 });
 
                 let start = Instant::now();
-                benchmark_exclusive_partition::<String>(&channel_2, 1, 1, iterations as usize);
+                benchmark_exclusive_partition(&channel_2, 1, chunk_size, iterations as usize);
                 thread_one.join().unwrap();
                 start.elapsed()
             });
@@ -123,9 +127,9 @@ fn run_two_concurrent_partitions_bench<const L: usize>(c: &mut Criterion, input:
 }
 
 fn bench_two_exclusive_partitions(c: &mut Criterion) {
-    run_two_exclusive_partitions_bench(c, BenchArgs::<1>::new(1024, 1));
+    // run_two_exclusive_partitions_bench(c, BenchArgs::<1>::new(1024, 1));
     // run_two_exclusive_partitions_bench(c, BenchArgs::<1024>::new(1024, 1));
-    // run_two_exclusive_partitions_bench(c, BenchArgs::<1>::new(1024, 8));
+    run_two_exclusive_partitions_bench(c, BenchArgs::<1>::new(1024, 64));
     // run_two_exclusive_partitions_bench(c, BenchArgs::<1024>::new(1024, 8));
     //
     // run_two_exclusive_partitions_bench(c, BenchArgs::<1>::new(4096, 1));
@@ -135,21 +139,21 @@ fn bench_two_exclusive_partitions(c: &mut Criterion) {
 }
 
 fn bench_two_concurrent_partitions(c: &mut Criterion) {
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(1024, 1));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(1024, 1));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(1024, 8));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(1024, 8));
-
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(4096, 1));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(4096, 1));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(4096, 8));
-    run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(4096, 8));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(1024, 1));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(1024, 1));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(1024, 8));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(1024, 8));
+    //
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(4096, 1));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(4096, 1));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1>::new(4096, 8));
+    // run_two_concurrent_partitions_bench(c, BenchArgs::<1024>::new(4096, 8));
 }
 
 criterion_group! {
     name = channel_benches;
-    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    targets = bench_two_exclusive_partitions,
+    config = Criterion::default().sample_size(500).with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = bench_two_exclusive_partitions, bench_two_concurrent_partitions
 }
 
 criterion_main!(channel_benches);
