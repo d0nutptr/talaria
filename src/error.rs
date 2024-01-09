@@ -47,5 +47,16 @@ pub enum TalariaError {
     SpuriousReservationFailure {
         partition_id: usize,
         requested: usize,
+    },
+    #[error("no elements in ring")]
+    NoElements,
+    #[error("must request at least 1 element from partition. partition: {partition_id}")]
+    RequestedZeroElements {
+        partition_id: usize,
+    },
+    #[error("request to retain reservation too large. reservation size: {reservation_size}, requested retain: {retain_amount}")]
+    ReservationRetainTooLarge {
+        retain_amount: usize,
+        reservation_size: usize,
     }
 }

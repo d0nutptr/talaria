@@ -54,6 +54,10 @@ impl<T> Inner<T> {
             return Err(TalariaError::ElementsNotPowerOfTwo { count: data.len() });
         }
 
+        if data.is_empty() {
+            return Err(TalariaError::NoElements);
+        }
+
         let (mut partition_states, ptrs): (Vec<_>, Vec<_>) = partition_definitions
             .into_iter()
             .enumerate()

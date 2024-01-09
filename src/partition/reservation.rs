@@ -1,28 +1,31 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use std::ptr::NonNull;
+use crate::error::TalariaResult;
+use crate::partition::Exclusive;
+use crate::partition::mode::PartitionModeT;
 use crate::partition::state::PartitionStateInner;
 use crate::partition::wait::WaitStrategy;
 
-pub struct Reservation<'p, T> {
+pub struct Reservation<'p, M, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
     start_index: usize,
     end_index: usize,
     len: usize,
     partition_state: NonNull<PartitionStateInner>,
-    inner: PhantomData<&'p ()>
+    inner: PhantomData<&'p M>
 }
 
-impl<T> Reservation<'_, T> {
-    pub(crate) fn new<'p>(
+impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
+    pub(crate) fn new(
         ring_ptr: NonNull<T>,
         ring_size: usize,
         start_index: usize,
         end_index: usize,
         len: usize,
         partition_state: NonNull<PartitionStateInner>,
-    ) -> Self {
+    ) -> Reservation<'p, M, T> {
         Self {
             ring_ptr,
             ring_size,
@@ -33,7 +36,9 @@ impl<T> Reservation<'_, T> {
             inner: PhantomData
         }
     }
+}
 
+impl<M, T> Reservation<'_, M, T> {
     pub fn len(&self) -> usize {
         self.len
     }
@@ -57,9 +62,37 @@ impl<T> Reservation<'_, T> {
             inner_phantom: PhantomData
         }
     }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            ring_ptr: self.ring_ptr,
+            ring_size: self.ring_size,
+            start_index: self.start_index,
+            end_index: self.end_index,
+            reservation_size: self.len,
+            offset: self.start_index,
+            inner_phantom: PhantomData
+        }
+    }
 }
 
-impl<T> Drop for Reservation<'_, T> {
+impl<T> Reservation<'_, Exclusive, T> {
+    pub fn retain(&mut self, new_size: usize) -> TalariaResult<()> {
+        if new_size > self.len {
+            return Err(crate::error::TalariaError::ReservationRetainTooLarge {
+                retain_amount: new_size,
+                reservation_size: self.len
+            });
+        }
+
+        self.end_index = self.start_index.wrapping_add(new_size);
+        self.len = new_size;
+
+        Ok(())
+    }
+}
+
+impl<M, T> Drop for Reservation<'_, M, T> {
     fn drop(&mut self) {
         const SPIN: usize = 16;
         // if the reservation is empty, do nothing
@@ -104,7 +137,7 @@ pub struct Iter<'r, T> {
     inner_phantom: PhantomData<&'r ()>
 }
 
-impl<T> Index<usize> for Reservation<'_, T> {
+impl<M, T> Index<usize> for Reservation<'_, M, T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -119,7 +152,7 @@ impl<T> Index<usize> for Reservation<'_, T> {
     }
 }
 
-impl<T> IndexMut<usize> for Reservation<'_, T> {
+impl<M, T> IndexMut<usize> for Reservation<'_, M, T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         if index >= self.len() {
             panic!("index out of bounds");
@@ -164,7 +197,7 @@ trait ProjectedIndexing {
     fn get_physical_address(&self, virtual_address: usize) -> usize;
 }
 
-impl<T> ProjectedIndexing for Reservation<'_, T> {
+impl<M, T> ProjectedIndexing for Reservation<'_, M, T> {
     fn len(&self) -> usize {
         self.end_index.wrapping_sub(self.start_index)
     }
@@ -191,3 +224,53 @@ impl<T> ProjectedIndexing for Iter<'_, T> {
         virtual_address & (self.ring_size - 1)
     }
 }
+
+pub struct IterMut<'r, T> {
+    ring_ptr: NonNull<T>,
+    ring_size: usize,
+    start_index: usize,
+    end_index: usize,
+    reservation_size: usize,
+    offset: usize,
+    inner_phantom: PhantomData<&'r ()>
+}
+
+impl<T> ProjectedIndexing for IterMut<'_, T> {
+    fn len(&self) -> usize {
+        self.reservation_size
+    }
+
+    fn get_virtual_address(&self, offset: usize) -> usize {
+        self.start_index.wrapping_add(offset)
+    }
+
+    fn get_physical_address(&self, virtual_address: usize) -> usize {
+        virtual_address & (self.ring_size - 1)
+    }
+}
+
+impl<'r, T: 'r> Iterator for IterMut<'r, T> {
+    type Item = &'r mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset == self.end_index {
+            return None;
+        }
+
+        let physical_address = self.get_physical_address(self.offset);
+        let element = unsafe { self.ring_ptr.add(physical_address).as_mut() };
+
+        self.offset = self.offset.wrapping_add(1);
+
+        Some(element)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining_length = self.end_index.wrapping_sub(self.offset);
+
+        (remaining_length, Some(remaining_length))
+    }
+}
+
+impl<'r, T: 'r> ExactSizeIterator for Iter<'r, T> {}
+impl<'r, T: 'r> ExactSizeIterator for IterMut<'r, T> {}
