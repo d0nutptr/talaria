@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use std::ptr::NonNull;
+use crate::loom::hint::spin_loop;
 use crate::error::TalariaResult;
 use crate::partition::Exclusive;
 use crate::partition::mode::PartitionModeT;
@@ -106,8 +107,12 @@ impl<M, T> Drop for Reservation<'_, M, T> {
                 .committed_index()
                 .load(std::sync::atomic::Ordering::Acquire) != self.start_index {
             for _ in 0 .. SPIN {
-                std::hint::spin_loop();
+                spin_loop();
             }
+
+            #[cfg(loom)]
+            loom::thread::yield_now();
+
             // todo: we should probably consider doing something special if this is a concurrent reservation so we can make sure not to pound the CPU too hard
             // std::thread::yield_now(); // todo: should we remove this? should we get `wait` here and park?
         }

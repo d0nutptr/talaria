@@ -11,6 +11,13 @@ pub struct Channel<T> {
     inner: Arc<Inner<T>>
 }
 
+#[cfg(test)]
+impl<T> Channel<T> {
+    pub fn introspect_get_inner(&self) -> &Inner<T> {
+        &self.inner
+    }
+}
+
 impl<T> Channel<T> {
     pub(crate) fn new(elements: Vec<T>, partition_definitions: Vec<PartitionMode>) -> TalariaResult<Self> {
         let inner = Inner::new(elements, partition_definitions)?;
@@ -63,7 +70,7 @@ impl<T> Inner<T> {
             .enumerate()
             .map(|(id, mode)| crate::partition::PartitionState::new(id, mode))
             .map(|state| {
-                let ptr = state.boundary_state();
+                let ptr = state.inner_ptr();
 
                 (state, ptr)
             })
@@ -135,6 +142,18 @@ impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
         unsafe {
             Vec::from_raw_parts(self.ring_ptr.as_ptr(), self.ring_size, self.ring_size);
+        }
+    }
+}
+
+
+#[cfg(any(test, loom))]
+mod test_utils {
+    use crate::channel::channel::Inner;
+
+    impl<T> Inner<T> {
+        pub fn introspect_partition_states(&self) -> &Vec<crate::partition::PartitionState> {
+            &self.partition_states
         }
     }
 }

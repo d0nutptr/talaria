@@ -3,6 +3,7 @@ use std::ptr::NonNull;
 use crossbeam_utils::CachePadded;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::loom::thread::park;
+use crate::loom::hint::spin_loop;
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::mode::{Concurrent, Exclusive, PartitionMode, PartitionModeT};
 use crate::partition::reservation::Reservation;
@@ -328,6 +329,12 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             if reservation_result.is_ok() {
                 break (reserved_index, new_reserved_index)
             }
+
+            #[cfg(loom)]
+            {
+                loom::thread::yield_now();
+                loom::skip_branch();
+            }
         };
 
         // 3. return the reservation
@@ -485,6 +492,12 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
                 // park the thread since we know we're not going to get space any time soon
                 park();
 
+                #[cfg(loom)]
+                {
+                    loom::hint::spin_loop();
+                    loom::thread::yield_now();
+                    loom::skip_branch();
+                }
                 // reset our refreshes
                 registered = false;
 
@@ -496,8 +509,11 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
             // if not enough space was available, but we've never fetched the boundary index
             _ if spins < MAX_SPIN_LOOP => {
                 for _ in 0 .. spins {
-                    std::hint::spin_loop();
+                    spin_loop();
                 }
+
+                #[cfg(loom)]
+                loom::thread::yield_now();
 
                 spins <<= 1;
 

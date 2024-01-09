@@ -5,7 +5,7 @@ use crate::partition::mode::PartitionMode;
 use crate::partition::wait::BlockingWaitStrategy;
 
 #[derive(Debug)]
-pub(crate) struct PartitionStateInner {
+pub struct PartitionStateInner {
     pub committed_index: CachePadded<AtomicUsize>,
     pub reserved_index: CachePadded<AtomicUsize>,
     pub waker: CachePadded<BlockingWaitStrategy>,
@@ -30,7 +30,7 @@ impl PartitionStateInner {
 }
 
 #[derive(Debug)]
-pub(crate) struct PartitionState {
+pub struct PartitionState {
     pub(crate) inner: NonNull<PartitionStateInner>,
     pub(crate) boundary_state: NonNull<PartitionStateInner>,
 }
@@ -45,7 +45,7 @@ impl PartitionState {
         }
     }
 
-    pub(crate) fn boundary_state(&self) -> NonNull<PartitionStateInner> {
+    pub(crate) fn inner_ptr(&self) -> NonNull<PartitionStateInner> {
         self.inner
     }
 
@@ -62,11 +62,28 @@ impl PartitionState {
     }
 }
 
-
 impl Drop for PartitionState {
     fn drop(&mut self) {
         unsafe {
             let _ = Box::from_raw(self.inner.as_ptr());
+        }
+    }
+}
+
+#[cfg(any(test, loom))]
+mod test_utils {
+    use crate::partition::PartitionState;
+    use crate::partition::state::PartitionStateInner;
+
+    impl PartitionState {
+        pub fn introspect_read_boundary_index(&self) -> usize {
+            unsafe {
+                self.boundary_state.as_ref().committed_index.load(std::sync::atomic::Ordering::SeqCst)
+            }
+        }
+
+        pub fn introspect_inner(&self) -> &PartitionStateInner {
+            self.inner()
         }
     }
 }
