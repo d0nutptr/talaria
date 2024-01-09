@@ -112,7 +112,7 @@ impl<T> Inner<T> {
         self.ring_ptr
     }
 
-    pub(crate) fn ring_size(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.ring_size
     }
 
@@ -122,7 +122,7 @@ impl<T> Inner<T> {
             .get(partition_id)
             .ok_or(TalariaError::PartitionNotFound { partition_id })?;
 
-        Partition::<Exclusive, T>::new(self.ring_ptr(), self.ring_size(), partition_state)
+        Partition::<Exclusive, T>::new(self.ring_ptr(), self.len(), partition_state)
     }
 
     pub fn get_concurrent_partition(&self, partition_id: usize) -> TalariaResult<Partition<Concurrent, T>> {
@@ -131,7 +131,7 @@ impl<T> Inner<T> {
             .get(partition_id)
             .ok_or(TalariaError::PartitionNotFound { partition_id })?;
 
-        Partition::<Concurrent, T>::new(self.ring_ptr(), self.ring_size(), partition_state)
+        Partition::<Concurrent, T>::new(self.ring_ptr(), self.len(), partition_state)
     }
 }
 

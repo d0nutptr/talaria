@@ -8,16 +8,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="de58476b-c8d6-4571-acfb-e7169629f6db" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/tests/exclusivity.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/channel/channel.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/channel/channel.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/loom.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/loom.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/partition/partition.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/partition.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/partition/reservation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/reservation.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/partition/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/state.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/channel.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/ping_pong.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/exclusivity.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/exclusivity.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -145,7 +138,7 @@
       <option name="presentableId" value="Default" />
       <updated>1704440798340</updated>
       <workItem from="1704440799379" duration="34664000" />
-      <workItem from="1704579757333" duration="65304000" />
+      <workItem from="1704579757333" duration="66278000" />
     </task>
     <servers />
   </component>
