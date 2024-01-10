@@ -1,7 +1,7 @@
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ptr::NonNull;
-use crate::loom::sync::Arc;
+use crate::sync_types::sync::Arc;
 use crate::channel::builder::Builder;
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode};

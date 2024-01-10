@@ -1,6 +1,6 @@
 use std::ptr::NonNull;
 use crossbeam_utils::CachePadded;
-use crate::loom::sync::atomic::AtomicUsize;
+use crate::sync_types::sync::atomic::AtomicUsize;
 use crate::partition::mode::PartitionMode;
 use crate::partition::wait::BlockingWaitStrategy;
 

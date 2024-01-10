@@ -3,4 +3,4 @@
 pub mod channel;
 pub mod error;
 pub mod partition;
-mod loom;
+mod sync_types;

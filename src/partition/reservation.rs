@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use std::ptr::NonNull;
-use crate::loom::hint::spin_loop;
+use crate::sync_types::hint::spin_loop;
 use crate::error::TalariaResult;
 use crate::partition::Exclusive;
 use crate::partition::mode::PartitionModeT;

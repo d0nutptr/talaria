@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 use crossbeam_utils::CachePadded;
-use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::loom::thread::park;
-use crate::loom::hint::spin_loop;
+use crate::sync_types::sync::atomic::{AtomicUsize, Ordering};
+use crate::sync_types::thread::park;
+use crate::sync_types::hint::spin_loop;
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::mode::{Concurrent, Exclusive, PartitionMode, PartitionModeT};
 use crate::partition::reservation::Reservation;

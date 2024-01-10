@@ -8,9 +8,23 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="de58476b-c8d6-4571-acfb-e7169629f6db" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/tests/loom/mod.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/shuttle/mod.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/shuttle/ping_pong.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/tests.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/channel/channel.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/channel/channel.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/exclusivity.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/exclusivity.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/loom.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/sync_types.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/partition/mode.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/mode.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/partition/partition.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/partition.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/partition/reservation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/reservation.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/partition/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/state.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/partition/wait.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/partition/wait.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/exclusivity.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/loom/exclusivity.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/ping_pong.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/loom/ping_pong.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -44,6 +58,7 @@
     "Cargo.Test talaria.executor": "Run",
     "Cargo.build.executor": "Run",
     "Cargo.loom correctness test suite.executor": "Run",
+    "Cargo.shuttle fuzzing test suite.executor": "Run",
     "Cargo.test.executor": "Run",
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -62,6 +77,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/tests/loom" />
       <recent name="$PROJECT_DIR$/src/partition" />
       <recent name="$PROJECT_DIR$/src/channel" />
     </key>
@@ -103,6 +119,25 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="shuttle fuzzing test suite" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="command" value="test --release" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs>
+        <env name="RUSTFLAGS" value="--cfg shuttle" />
+      </envs>
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test --workspace" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -124,6 +159,7 @@
       <item itemvalue="Cargo.test" />
       <item itemvalue="Cargo.build" />
       <item itemvalue="Cargo.loom correctness test suite" />
+      <item itemvalue="Cargo.shuttle fuzzing test suite" />
     </list>
   </component>
   <component name="RustProjectSettings">
@@ -138,7 +174,7 @@
       <option name="presentableId" value="Default" />
       <updated>1704440798340</updated>
       <workItem from="1704440799379" duration="34664000" />
-      <workItem from="1704579757333" duration="66278000" />
+      <workItem from="1704579757333" duration="69650000" />
     </task>
     <servers />
   </component>

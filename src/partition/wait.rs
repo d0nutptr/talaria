@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::hash::Hash;
 use std::sync::atomic::AtomicUsize as StdAtomicUsize;
-use crate::loom::sync::atomic::{AtomicBool, Ordering};
-use crate::loom::sync::Mutex;
-use crate::loom::thread::{park, Thread, current as current_thread};
+use crate::sync_types::sync::atomic::{AtomicBool, Ordering};
+use crate::sync_types::sync::Mutex;
+use crate::sync_types::thread::{park, Thread, current as current_thread};
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) struct Token(u128);

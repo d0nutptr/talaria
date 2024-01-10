@@ -10,6 +10,9 @@ thiserror = "1"
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"
 
+[target.'cfg(shuttle)'.dependencies]
+shuttle = "0.6"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }

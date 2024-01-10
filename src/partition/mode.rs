@@ -1,5 +1,5 @@
-use crate::loom::sync::Arc;
-use crate::loom::sync::atomic::AtomicBool;
+use crate::sync_types::sync::Arc;
+use crate::sync_types::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone)]
 pub enum PartitionMode {
