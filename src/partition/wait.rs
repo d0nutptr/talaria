@@ -1,9 +1,10 @@
-use crate::sync_types::sync::atomic::{AtomicBool, Ordering};
-use crate::sync_types::sync::Mutex;
-use crate::sync_types::thread::{current as current_thread, park, Thread};
 use std::cell::RefCell;
 use std::hash::Hash;
 use std::sync::atomic::AtomicUsize as StdAtomicUsize;
+
+use crate::sync_types::sync::atomic::{AtomicBool, Ordering};
+use crate::sync_types::sync::Mutex;
+use crate::sync_types::thread::{current as current_thread, park, Thread};
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) struct Token(u128);
@@ -32,8 +33,9 @@ impl Token {
     }
 }
 
-// todo: make multiple strategies, including an 'async wait strategy' so it can be used in tokio maybe
-// todo: maybe this should have clients register for the wait using atomics
+// todo: make multiple strategies, including an 'async wait strategy' so it can
+// be used in tokio maybe todo: maybe this should have clients register for the
+// wait using atomics
 #[derive(Debug)]
 pub struct BlockingWaitStrategy {
     listeners: Mutex<Vec<(Token, Thread)>>,
@@ -54,7 +56,8 @@ pub trait WaitStrategy {
 
 impl BlockingWaitStrategy {
     pub fn new() -> Self {
-        // honestly this could be larger, but 16 is probably as many listeners are we might expect to have in any reasonable application
+        // honestly this could be larger, but 16 is probably as many listeners are we
+        // might expect to have in any reasonable application
         const INITIAL_LISTENER_CAPACITY: usize = 16;
 
         Self {
@@ -76,8 +79,8 @@ impl WaitStrategy for BlockingWaitStrategy {
             let mut listeners = self.listeners.lock().unwrap();
 
             if !self.is_empty.load(Ordering::SeqCst) {
-                // todo: check if we should do what the std library does and only notify one thread
-                // or if we should notify all of them like we do here
+                // todo: check if we should do what the std library does and only notify one
+                // thread or if we should notify all of them like we do here
                 for (_, thread) in listeners.drain(..) {
                     thread.unpark();
                 }

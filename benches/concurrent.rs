@@ -1,10 +1,12 @@
 mod common;
 
-use crate::common::{bench_scenarios, BenchArgs};
+use std::time::Instant;
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
-use std::time::Instant;
 use talaria::channel::Channel;
+
+use crate::common::{bench_scenarios, BenchArgs};
 
 fn run_concurrent_benchmark<M>(
     channel: &Channel<M>,
@@ -56,17 +58,12 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
 }
 
 fn run_benchmark(c: &mut Criterion) {
-    bench_scenarios(
-        c,
-        "Concurrent Partitions",
-        run_benchmark_with_args,
-        vec![
-            BenchArgs::new(1024, 1),
-            BenchArgs::new(1024, 64),
-            BenchArgs::new(4096, 1),
-            BenchArgs::new(4096, 64),
-        ],
-    );
+    bench_scenarios(c, "Concurrent Partitions", run_benchmark_with_args, vec![
+        BenchArgs::new(1024, 1),
+        BenchArgs::new(1024, 64),
+        BenchArgs::new(4096, 1),
+        BenchArgs::new(4096, 64),
+    ]);
 }
 
 criterion_group! {

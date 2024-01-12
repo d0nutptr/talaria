@@ -1,0 +1,13 @@
+# https://rust-lang.github.io/rustfmt/?version=v1.7.0
+
+imports_layout = "HorizontalVertical"
+imports_granularity = "Module"
+normalize_comments = true
+overflow_delimited_expr = true
+reorder_impl_items = true
+reorder_imports = true
+group_imports = "StdExternalCrate"
+struct_lit_single_line = false
+
+unstable_features = true
+wrap_comments = true

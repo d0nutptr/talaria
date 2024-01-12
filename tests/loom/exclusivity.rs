@@ -2,6 +2,7 @@
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+
 use talaria::channel::Channel;
 
 const MAX_TEST_TIME: Duration = Duration::from_secs(3 * 60); // 3 minutes

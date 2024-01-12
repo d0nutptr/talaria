@@ -1,7 +1,8 @@
+use std::marker::PhantomData;
+
 use crate::channel::channel::Channel;
 use crate::error::TalariaResult;
 use crate::partition::PartitionMode;
-use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 pub struct Builder<T> {

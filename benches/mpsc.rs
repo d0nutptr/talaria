@@ -1,16 +1,20 @@
 mod common;
 
-use crate::common::{bench_scenarios, BenchArgs};
+use std::time::Instant;
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
-use std::time::Instant;
+
+use crate::common::{bench_scenarios, BenchArgs};
 
 pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchArgs) {
     const OBJECT_SIZE: usize = 64;
 
     c.bench_with_input(id, &args, |b, args| {
         b.iter_custom(|iterations| {
-            let BenchArgs { channel_size, .. } = *args;
+            let BenchArgs {
+                channel_size, ..
+            } = *args;
             let (sender, receiver) = std::sync::mpsc::sync_channel(channel_size);
 
             let reader_thread = std::thread::spawn(move || {
@@ -36,12 +40,10 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
 fn run_benchmark(c: &mut Criterion) {
     // since mpsc doesn't expose an api for fetching multiple elements at a time,
     // we'll just ignore chunking for now in fairness to std::sync::mpsc
-    bench_scenarios(
-        c,
-        "std::sync::mpsc",
-        run_benchmark_with_args,
-        vec![BenchArgs::new(1024, 1), BenchArgs::new(4096, 1)],
-    );
+    bench_scenarios(c, "std::sync::mpsc", run_benchmark_with_args, vec![
+        BenchArgs::new(1024, 1),
+        BenchArgs::new(4096, 1),
+    ]);
 }
 
 criterion_group! {

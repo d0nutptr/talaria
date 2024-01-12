@@ -1,8 +1,10 @@
+use std::ptr::NonNull;
+
+use crossbeam_utils::CachePadded;
+
 use crate::partition::mode::PartitionMode;
 use crate::partition::wait::BlockingWaitStrategy;
 use crate::sync_types::sync::atomic::AtomicUsize;
-use crossbeam_utils::CachePadded;
-use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub struct PartitionStateInner {

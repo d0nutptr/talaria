@@ -1,7 +1,8 @@
 #![cfg(loom)]
 
-use loom::model::Builder;
 use std::time::Duration;
+
+use loom::model::Builder;
 use talaria::channel::Channel;
 
 const MAX_TEST_TIME: Duration = Duration::from_secs(3 * 60); // 3 minutes
@@ -117,21 +118,24 @@ fn exclusive_nonblocking_ping_pong() {
     });
 }
 
-/*
-   Note! The concurrent tests use more than 2 threads in their tests to properly exercise the concurrent partitions.
-   We want to test scenarios where at least 2 threads are fighting over a partition, and need a third thread to ensure
-   the first partition is properly fed. It also lets us test the boundary conditions around internal ring index rollover.
-
-   Unfortunately, loom seems to struggle with more than 2 threads at a time (see: https://github.com/tokio-rs/loom/issues/53)
-
-   This is especially true, because, strictly speaking, talaria is not guaranteed to make progress always:
-       e.g. channel of size 8 split evenly between two partitions, while they block asking for 5 elements
-
-   Therefore it's possible to encounter scenarios, based on thread scheduling, where a worst-case scenario occurs.
-
-   Anyway, the tl;dr is that these tests limit the number of messages they send and enforce a timeout (see `MAX_TEST_TIME`)
-   but this *should* be sufficient to catch most bugs.
-*/
+// Note! The concurrent tests use more than 2 threads in their tests to properly
+// exercise the concurrent partitions. We want to test scenarios where at least
+// 2 threads are fighting over a partition, and need a third thread to ensure
+// the first partition is properly fed. It also lets us test the boundary
+// conditions around internal ring index rollover.
+//
+// Unfortunately, loom seems to struggle with more than 2 threads at a time (see: https://github.com/tokio-rs/loom/issues/53)
+//
+// This is especially true, because, strictly speaking, talaria is not
+// guaranteed to make progress always: e.g. channel of size 8 split evenly
+// between two partitions, while they block asking for 5 elements
+//
+// Therefore it's possible to encounter scenarios, based on thread scheduling,
+// where a worst-case scenario occurs.
+//
+// Anyway, the tl;dr is that these tests limit the number of messages they send
+// and enforce a timeout (see `MAX_TEST_TIME`) but this *should* be sufficient
+// to catch most bugs.
 
 #[test]
 fn concurrent_blocking_ping_pong() {

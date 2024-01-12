@@ -19,7 +19,8 @@ impl PartitionMode {
     }
 }
 
-/// Marks a partition as "exclusive" which means that only one consumer can access it at a time.
+/// Marks a partition as "exclusive" which means that only one consumer can
+/// access it at a time.
 ///
 /// This mode uses a fast, non-atomic reservation system.
 #[derive(Debug)]
@@ -27,7 +28,8 @@ pub struct Exclusive {
     pub(crate) in_use: Arc<AtomicBool>,
 }
 
-/// Marks a partition as "concurrent" which means that multiple consumers can access it at a time
+/// Marks a partition as "concurrent" which means that multiple consumers can
+/// access it at a time
 ///
 /// This mode uses a slower, though still efficient, atomic reservation system.
 #[derive(Debug, Clone)]

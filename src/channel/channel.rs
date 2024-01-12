@@ -1,10 +1,11 @@
+use std::mem::ManuallyDrop;
+use std::ops::Deref;
+use std::ptr::NonNull;
+
 use crate::channel::builder::Builder;
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode};
 use crate::sync_types::sync::Arc;
-use std::mem::ManuallyDrop;
-use std::ops::Deref;
-use std::ptr::NonNull;
 
 #[derive(Debug, Clone)]
 pub struct Channel<T> {
@@ -70,7 +71,9 @@ impl<T> Inner<T> {
         }
 
         if !data.len().is_power_of_two() {
-            return Err(TalariaError::ElementsNotPowerOfTwo { count: data.len() });
+            return Err(TalariaError::ElementsNotPowerOfTwo {
+                count: data.len(),
+            });
         }
 
         if data.is_empty() {
@@ -88,9 +91,11 @@ impl<T> Inner<T> {
             })
             .unzip();
 
-        // create an iterator that is rotated backward by 1 (which is done by cycling and skipping the last element)
-        // this is so that we can pass the boundary partition index to the appropriate partition state builder
-        // partition 1 should get partition 0's committed index pointer, partition 2 should get partition 1's committed index pointer, etc.
+        // create an iterator that is rotated backward by 1 (which is done by cycling
+        // and skipping the last element) this is so that we can pass the
+        // boundary partition index to the appropriate partition state builder
+        // partition 1 should get partition 0's committed index pointer, partition 2
+        // should get partition 1's committed index pointer, etc.
         // notably, partition 0 should get partition N's committed index pointer
         let offset_committed_indexes = ptrs.into_iter().cycle().skip(partition_states.len() - 1);
 
@@ -126,10 +131,12 @@ impl<T> Inner<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Exclusive, T>> {
-        let partition_state = self
-            .partition_states
-            .get(partition_id)
-            .ok_or(TalariaError::PartitionNotFound { partition_id })?;
+        let partition_state =
+            self.partition_states
+                .get(partition_id)
+                .ok_or(TalariaError::PartitionNotFound {
+                    partition_id,
+                })?;
 
         Partition::<Exclusive, T>::new(self.ring_ptr(), self.len(), partition_state)
     }
@@ -138,10 +145,12 @@ impl<T> Inner<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Concurrent, T>> {
-        let partition_state = self
-            .partition_states
-            .get(partition_id)
-            .ok_or(TalariaError::PartitionNotFound { partition_id })?;
+        let partition_state =
+            self.partition_states
+                .get(partition_id)
+                .ok_or(TalariaError::PartitionNotFound {
+                    partition_id,
+                })?;
 
         Partition::<Concurrent, T>::new(self.ring_ptr(), self.len(), partition_state)
     }

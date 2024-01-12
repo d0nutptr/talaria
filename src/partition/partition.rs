@@ -1,3 +1,8 @@
+use std::marker::PhantomData;
+use std::ptr::NonNull;
+
+use crossbeam_utils::CachePadded;
+
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::mode::{Concurrent, Exclusive, PartitionMode, PartitionModeT};
 use crate::partition::reservation::Reservation;
@@ -6,9 +11,6 @@ use crate::partition::wait::{BlockingWaitStrategy, Token, WaitStrategy};
 use crate::sync_types::hint::spin_loop;
 use crate::sync_types::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync_types::thread::park;
-use crossbeam_utils::CachePadded;
-use std::marker::PhantomData;
-use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub struct Partition<'c, M: PartitionModeT, T> {
@@ -81,7 +83,9 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         partition_state: &PartitionState,
     ) -> TalariaResult<Self> {
         match partition_state.mode() {
-            PartitionMode::Exclusive { ref in_use } => {
+            PartitionMode::Exclusive {
+                ref in_use,
+            } => {
                 // secure the exclusive partition by marking it as in-use
                 // todo: can this be `Acquire`?
                 in_use
@@ -164,7 +168,8 @@ impl<'c, T> Partition<'c, Exclusive, T> {
 
     /// Acquires a reservation of the requested size on this partition.
     ///
-    /// This method is blocking in that it will continue to try acquiring the reservation until available
+    /// This method is blocking in that it will continue to try acquiring the
+    /// reservation until available
     pub fn reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Exclusive, T>> {
         // 1. check if there is enough space
         if amount == 0 {
@@ -180,12 +185,13 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             });
         }
 
-        let AvailableReservation { reserved_index, .. } =
-            get_reserved_index_when_requested_space_available(
-                amount,
-                self,
-                ReservationIndexStrategy::Lazy,
-            )?;
+        let AvailableReservation {
+            reserved_index, ..
+        } = get_reserved_index_when_requested_space_available(
+            amount,
+            self,
+            ReservationIndexStrategy::Lazy,
+        )?;
 
         // 2. attempt to reserve the space
         let new_reserved_index = reserved_index.wrapping_add(amount);
@@ -312,7 +318,8 @@ impl<'c, T> Partition<'c, Concurrent, T> {
 
     /// Acquires a reservation of the requested size on this partition.
     ///
-    /// This method is blocking in that it will continue to try acquiring the reservation until available
+    /// This method is blocking in that it will continue to try acquiring the
+    /// reservation until available
     pub fn reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Concurrent, T>> {
         // 1. check if there is enough space
         if amount > self.ring_size() {
@@ -323,12 +330,13 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         }
 
         let (reserved_index, new_reserved_index) = loop {
-            let AvailableReservation { reserved_index, .. } =
-                get_reserved_index_when_requested_space_available(
-                    amount,
-                    self,
-                    ReservationIndexStrategy::Pessimistic,
-                )?;
+            let AvailableReservation {
+                reserved_index, ..
+            } = get_reserved_index_when_requested_space_available(
+                amount,
+                self,
+                ReservationIndexStrategy::Pessimistic,
+            )?;
 
             // 2. attempt to reserve the space
             // todo: could this be a weaker order?
@@ -410,9 +418,11 @@ impl Drop for Exclusive {
 }
 
 #[inline]
-/// checks if the partition has enough room for the requested amount of space, returning the initial index if so
+/// checks if the partition has enough room for the requested amount of space,
+/// returning the initial index if so
 ///
-/// this function will also refresh the cached boundary index if not enough space was determined to be available
+/// this function will also refresh the cached boundary index if not enough
+/// space was determined to be available
 fn get_reserved_index_if_enough_space_available<M: PartitionModeT, T>(
     requested: usize,
     partition: &mut Partition<'_, M, T>,
@@ -540,7 +550,8 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
             }
             // if enough space is not available
             // and we already spun for a while
-            // we should register for a notification, check the condition one last time, and then park the thread
+            // we should register for a notification, check the condition one last time, and then
+            // park the thread
             _ => {
                 // reset our refreshes
                 spins = DEFAULT_SPINS;

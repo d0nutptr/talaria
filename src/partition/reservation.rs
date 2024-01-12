@@ -1,12 +1,13 @@
+use std::marker::PhantomData;
+use std::ops::{Index, IndexMut};
+use std::ptr::NonNull;
+
 use crate::error::TalariaResult;
 use crate::partition::mode::PartitionModeT;
 use crate::partition::state::PartitionStateInner;
 use crate::partition::wait::WaitStrategy;
 use crate::partition::Exclusive;
 use crate::sync_types::hint::spin_loop;
-use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
-use std::ptr::NonNull;
 
 pub struct Reservation<'p, M, T> {
     ring_ptr: NonNull<T>,
@@ -116,12 +117,15 @@ impl<M, T> Drop for Reservation<'_, M, T> {
             #[cfg(loom)]
             loom::thread::yield_now();
 
-            // todo: we should probably consider doing something special if this is a concurrent reservation so we can make sure not to pound the CPU too hard
-            // std::thread::yield_now(); // todo: should we remove this? should we get `wait` here and park?
+            // todo: we should probably consider doing something special if this
+            // is a concurrent reservation so we can make sure not to pound the
+            // CPU too hard std::thread::yield_now(); // todo:
+            // should we remove this? should we get `wait` here and park?
         }
 
-        // todo: Switching from SeqCst to Release ordering here results in a massive performance improvement. test that this is safe
-        // it's our turn now, so let's commit the reservation
+        // todo: Switching from SeqCst to Release ordering here results in a massive
+        // performance improvement. test that this is safe it's our turn now, so
+        // let's commit the reservation
         let end = self.end_index;
         let p_state = self.partition_state();
         let c_index = p_state.committed_index();
@@ -196,10 +200,12 @@ impl<'r, T: 'r> Iterator for Iter<'r, T> {
 
 trait ProjectedIndexing {
     fn len(&self) -> usize;
-    /// Maps an offset `[0, usize::MAX]` to a virtual address `[self.start_index, usize::MAX]`
+    /// Maps an offset `[0, usize::MAX]` to a virtual address
+    /// `[self.start_index, usize::MAX]`
     fn get_virtual_address(&self, offset: usize) -> usize;
 
-    /// Maps a virtual address `[0, usize::MAX]` to a physical address `[0, self.data.len())`
+    /// Maps a virtual address `[0, usize::MAX]` to a physical address `[0,
+    /// self.data.len())`
     fn get_physical_address(&self, virtual_address: usize) -> usize;
 }
 
