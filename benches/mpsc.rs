@@ -32,9 +32,9 @@ pub fn run_benchmark_with_args(
                 let start = Instant::now();
 
                 for _ in 0 .. iterations {
-
                     sender.send([0u8; OBJECT_SIZE]).expect("send failed");
                 }
+
                 drop(sender);
 
                 reader_thread.join().unwrap();
@@ -45,7 +45,7 @@ pub fn run_benchmark_with_args(
 }
 
 fn run_benchmark(c: &mut Criterion) {
-    // since mpsc doesn't expose an api for fetching multiple elements at a time (and batching would require allocating a vec),
+    // since mpsc doesn't expose an api for fetching multiple elements at a time,
     // we'll just ignore chunking for now in fairness to std::sync::mpsc
     bench_scenarios(c, "std::sync::mpsc", run_benchmark_with_args, vec![
         BenchArgs::new(1024, 1),
