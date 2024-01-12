@@ -19,8 +19,17 @@ pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 loom = "0.7"
 
 [[bench]]
-name = "channel"
+name = "exclusive"
+harness = false
+
+[[bench]]
+name = "concurrent"
+harness = false
+
+[[bench]]
+name = "mpsc"
 harness = false
 
 [profile.release]
 debug = true
+lto = true

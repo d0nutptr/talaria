@@ -319,8 +319,8 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             )?;
 
             // 2. attempt to reserve the space
+            // todo: could this be a weaker order?
             let new_reserved_index = reserved_index.wrapping_add(amount);
-            // todo: can this be `Release`? (probably should be)
             let reservation_result = self
                 .partition_state()
                 .reserved_index
@@ -504,7 +504,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
                 // update our cached boundary since this value updated
                 partition.cached_boundary_index = partition
                     .boundary_index()
-                    .load(Ordering::SeqCst);
+                    .load(Ordering::Acquire);
             }
             // if not enough space was available, but we've never fetched the boundary index
             _ if spins < MAX_SPIN_LOOP => {
@@ -519,7 +519,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
 
                 partition.cached_boundary_index = partition
                     .boundary_index()
-                    .load(Ordering::SeqCst);
+                    .load(Ordering::Acquire);
             },
             // if enough space is not available
             // and we already spun for a while
@@ -535,7 +535,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
                 // check condition one last time
                 partition.cached_boundary_index = partition
                     .boundary_index()
-                    .load(Ordering::SeqCst);
+                    .load(Ordering::Acquire);
             }
         }
 

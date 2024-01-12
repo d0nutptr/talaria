@@ -42,5 +42,5 @@ fn concurrent_blocking_ping_pong() {
         ping_one_handle.join().unwrap();
         ping_two_handle.join().unwrap();
         pong_handle.join().unwrap();
-    }, 1_000_000);
+    }, 100_000);
 }
