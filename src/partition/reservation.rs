@@ -1,12 +1,12 @@
-use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
-use std::ptr::NonNull;
-use crate::sync_types::hint::spin_loop;
 use crate::error::TalariaResult;
-use crate::partition::Exclusive;
 use crate::partition::mode::PartitionModeT;
 use crate::partition::state::PartitionStateInner;
 use crate::partition::wait::WaitStrategy;
+use crate::partition::Exclusive;
+use crate::sync_types::hint::spin_loop;
+use std::marker::PhantomData;
+use std::ops::{Index, IndexMut};
+use std::ptr::NonNull;
 
 pub struct Reservation<'p, M, T> {
     ring_ptr: NonNull<T>,
@@ -15,7 +15,7 @@ pub struct Reservation<'p, M, T> {
     end_index: usize,
     len: usize,
     partition_state: NonNull<PartitionStateInner>,
-    inner: PhantomData<&'p M>
+    inner: PhantomData<&'p M>,
 }
 
 impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
@@ -34,7 +34,7 @@ impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
             end_index,
             len,
             partition_state,
-            inner: PhantomData
+            inner: PhantomData,
         }
     }
 }
@@ -60,7 +60,7 @@ impl<M, T> Reservation<'_, M, T> {
             end_index: self.end_index,
             reservation_size: self.len,
             offset: self.start_index,
-            inner_phantom: PhantomData
+            inner_phantom: PhantomData,
         }
     }
 
@@ -72,7 +72,7 @@ impl<M, T> Reservation<'_, M, T> {
             end_index: self.end_index,
             reservation_size: self.len,
             offset: self.start_index,
-            inner_phantom: PhantomData
+            inner_phantom: PhantomData,
         }
     }
 }
@@ -82,7 +82,7 @@ impl<T> Reservation<'_, Exclusive, T> {
         if new_size > self.len {
             return Err(crate::error::TalariaError::ReservationRetainTooLarge {
                 retain_amount: new_size,
-                reservation_size: self.len
+                reservation_size: self.len,
             });
         }
 
@@ -103,10 +103,13 @@ impl<M, T> Drop for Reservation<'_, M, T> {
 
         // todo implement a less expensive spinlock here
         // wait for our turn to move the committed index forward
-        while self.partition_state()
-                .committed_index()
-                .load(std::sync::atomic::Ordering::Acquire) != self.start_index {
-            for _ in 0 .. SPIN {
+        while self
+            .partition_state()
+            .committed_index()
+            .load(std::sync::atomic::Ordering::Acquire)
+            != self.start_index
+        {
+            for _ in 0..SPIN {
                 spin_loop();
             }
 
@@ -126,9 +129,7 @@ impl<M, T> Drop for Reservation<'_, M, T> {
 
         // notify all observers that we updated the committed index
         // todo: determine if there is a better way, since this is expensive on drop
-        self.partition_state()
-            .waker
-            .notify();
+        self.partition_state().waker.notify();
     }
 }
 
@@ -139,7 +140,7 @@ pub struct Iter<'r, T> {
     end_index: usize,
     reservation_size: usize,
     offset: usize,
-    inner_phantom: PhantomData<&'r ()>
+    inner_phantom: PhantomData<&'r ()>,
 }
 
 impl<M, T> Index<usize> for Reservation<'_, M, T> {
@@ -237,7 +238,7 @@ pub struct IterMut<'r, T> {
     end_index: usize,
     reservation_size: usize,
     offset: usize,
-    inner_phantom: PhantomData<&'r ()>
+    inner_phantom: PhantomData<&'r ()>,
 }
 
 impl<T> ProjectedIndexing for IterMut<'_, T> {

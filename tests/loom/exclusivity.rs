@@ -17,7 +17,6 @@ fn get_loom_testing_model(preemption_bound: impl Into<Option<usize>>) -> loom::m
     model
 }
 
-
 fn check_channel_invariants<T>(channel: &Channel<T>) {
     loom::stop_exploring();
     let channel_size = channel.len();
@@ -71,11 +70,9 @@ fn exclusive_partitions_never_overlap() {
     const CHANNEL_SIZE: usize = 4;
 
     fn run(channel: Channel<usize>, partition_id: usize, amount: usize, chunk: usize) {
-        let mut partition = channel
-            .get_exclusive_partition(partition_id)
-            .unwrap();
+        let mut partition = channel.get_exclusive_partition(partition_id).unwrap();
 
-        for _ in 0 .. amount / chunk {
+        for _ in 0..amount / chunk {
             let _ = partition.reserve(chunk).unwrap();
             check_channel_invariants(&channel);
         }

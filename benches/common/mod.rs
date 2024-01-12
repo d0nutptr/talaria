@@ -22,8 +22,7 @@ pub fn bench<'a, F: FnOnce(&mut Criterion, BenchmarkId, BenchArgs)>(
 ) -> impl FnOnce(F) + 'a {
     let input_description = format!(
         "Channel Size: {} elements, Reservation Size: {} elements",
-        args.channel_size,
-        args.chunk_size,
+        args.channel_size, args.chunk_size,
     );
 
     let id = BenchmarkId::new(function_name, input_description);
@@ -32,12 +31,10 @@ pub fn bench<'a, F: FnOnce(&mut Criterion, BenchmarkId, BenchArgs)>(
 }
 
 pub fn bench_scenarios<F>(c: &mut Criterion, suite_name: &str, bench_fn: F, inputs: Vec<BenchArgs>)
-    where
-        F: Fn(&mut Criterion, BenchmarkId, BenchArgs)
+where
+    F: Fn(&mut Criterion, BenchmarkId, BenchArgs),
 {
-    inputs
-        .into_iter()
-        .for_each(|args| {
-            bench(suite_name, c, args)(|c, id, args| bench_fn(c, id, args));
-        });
+    inputs.into_iter().for_each(|args| {
+        bench(suite_name, c, args)(|c, id, args| bench_fn(c, id, args));
+    });
 }

@@ -1,14 +1,14 @@
-use std::mem::ManuallyDrop;
-use std::ops::Deref;
-use std::ptr::NonNull;
-use crate::sync_types::sync::Arc;
 use crate::channel::builder::Builder;
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode};
+use crate::sync_types::sync::Arc;
+use std::mem::ManuallyDrop;
+use std::ops::Deref;
+use std::ptr::NonNull;
 
 #[derive(Debug, Clone)]
 pub struct Channel<T> {
-    inner: Arc<Inner<T>>
+    inner: Arc<Inner<T>>,
 }
 
 #[cfg(test)]
@@ -19,11 +19,14 @@ impl<T> Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub(crate) fn new(elements: Vec<T>, partition_definitions: Vec<PartitionMode>) -> TalariaResult<Self> {
+    pub(crate) fn new(
+        elements: Vec<T>,
+        partition_definitions: Vec<PartitionMode>,
+    ) -> TalariaResult<Self> {
         let inner = Inner::new(elements, partition_definitions)?;
 
         Ok(Self {
-            inner: Arc::new(inner)
+            inner: Arc::new(inner),
         })
     }
 
@@ -44,17 +47,26 @@ impl<T> Deref for Channel<T> {
 pub struct Inner<T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
-    partition_states: Vec<crate::partition::PartitionState>
+    partition_states: Vec<crate::partition::PartitionState>,
 }
 
 impl<T> Inner<T> {
-    pub(crate) fn new(data: Vec<T>, partition_definitions: Vec<PartitionMode>) -> TalariaResult<Self> {
+    pub(crate) fn new(
+        data: Vec<T>,
+        partition_definitions: Vec<PartitionMode>,
+    ) -> TalariaResult<Self> {
         const MIN_PARTITIONS: usize = 2; // todo: can this be 1?
 
-        assert_ne!(std::mem::size_of::<T>(), 0, "zero-sized types not supported");
+        assert_ne!(
+            std::mem::size_of::<T>(),
+            0,
+            "zero-sized types not supported"
+        );
 
         if partition_definitions.len() < MIN_PARTITIONS {
-            return Err(TalariaError::TooFewPartitions { requested: partition_definitions.len() });
+            return Err(TalariaError::TooFewPartitions {
+                requested: partition_definitions.len(),
+            });
         }
 
         if !data.len().is_power_of_two() {
@@ -80,10 +92,7 @@ impl<T> Inner<T> {
         // this is so that we can pass the boundary partition index to the appropriate partition state builder
         // partition 1 should get partition 0's committed index pointer, partition 2 should get partition 1's committed index pointer, etc.
         // notably, partition 0 should get partition N's committed index pointer
-        let offset_committed_indexes = ptrs
-            .into_iter()
-            .cycle()
-            .skip(partition_states.len() - 1);
+        let offset_committed_indexes = ptrs.into_iter().cycle().skip(partition_states.len() - 1);
 
         partition_states
             .iter_mut()
@@ -96,15 +105,12 @@ impl<T> Inner<T> {
         // shrink to fit so we only need to track length instead of length + capacity
         data.shrink_to_fit();
 
-        let (ptr, len) = (
-            NonNull::new(data.as_mut_ptr()).unwrap(),
-            data.len(),
-        );
+        let (ptr, len) = (NonNull::new(data.as_mut_ptr()).unwrap(), data.len());
 
         Ok(Self {
             ring_ptr: ptr,
             ring_size: len,
-            partition_states
+            partition_states,
         })
     }
 
@@ -116,7 +122,10 @@ impl<T> Inner<T> {
         self.ring_size
     }
 
-    pub fn get_exclusive_partition(&self, partition_id: usize) -> TalariaResult<Partition<Exclusive, T>> {
+    pub fn get_exclusive_partition(
+        &self,
+        partition_id: usize,
+    ) -> TalariaResult<Partition<Exclusive, T>> {
         let partition_state = self
             .partition_states
             .get(partition_id)
@@ -125,7 +134,10 @@ impl<T> Inner<T> {
         Partition::<Exclusive, T>::new(self.ring_ptr(), self.len(), partition_state)
     }
 
-    pub fn get_concurrent_partition(&self, partition_id: usize) -> TalariaResult<Partition<Concurrent, T>> {
+    pub fn get_concurrent_partition(
+        &self,
+        partition_id: usize,
+    ) -> TalariaResult<Partition<Concurrent, T>> {
         let partition_state = self
             .partition_states
             .get(partition_id)
@@ -145,7 +157,6 @@ impl<T> Drop for Inner<T> {
         }
     }
 }
-
 
 #[cfg(any(test, loom))]
 mod test_utils {

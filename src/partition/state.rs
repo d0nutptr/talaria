@@ -1,8 +1,8 @@
-use std::ptr::NonNull;
-use crossbeam_utils::CachePadded;
-use crate::sync_types::sync::atomic::AtomicUsize;
 use crate::partition::mode::PartitionMode;
 use crate::partition::wait::BlockingWaitStrategy;
+use crate::sync_types::sync::atomic::AtomicUsize;
+use crossbeam_utils::CachePadded;
+use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub struct PartitionStateInner {
@@ -20,7 +20,7 @@ impl PartitionStateInner {
             committed_index: CachePadded::from(AtomicUsize::new(0)),
             reserved_index: CachePadded::from(AtomicUsize::new(0)),
             waker: CachePadded::from(BlockingWaitStrategy::new()),
-            mode
+            mode,
         }
     }
 
@@ -72,13 +72,16 @@ impl Drop for PartitionState {
 
 #[cfg(any(test, loom))]
 mod test_utils {
-    use crate::partition::PartitionState;
     use crate::partition::state::PartitionStateInner;
+    use crate::partition::PartitionState;
 
     impl PartitionState {
         pub fn introspect_read_boundary_index(&self) -> usize {
             unsafe {
-                self.boundary_state.as_ref().committed_index.load(std::sync::atomic::Ordering::SeqCst)
+                self.boundary_state
+                    .as_ref()
+                    .committed_index
+                    .load(std::sync::atomic::Ordering::SeqCst)
             }
         }
 

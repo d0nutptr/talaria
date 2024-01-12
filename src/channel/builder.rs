@@ -1,19 +1,19 @@
-use std::marker::PhantomData;
 use crate::channel::channel::Channel;
 use crate::error::TalariaResult;
 use crate::partition::PartitionMode;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 pub struct Builder<T> {
     partition_definitions: Vec<PartitionMode>,
-    kind: PhantomData<T>
+    kind: PhantomData<T>,
 }
 
 impl<T> Builder<T> {
     pub fn new() -> Self {
         Self {
             partition_definitions: Vec::new(),
-            kind: PhantomData
+            kind: PhantomData,
         }
     }
 

@@ -1,20 +1,8 @@
 #[cfg(not(any(loom, shuttle)))]
-pub(crate) use std::{
-    sync,
-    thread,
-    hint,
-};
+pub(crate) use std::{hint, sync, thread};
 
 #[cfg(all(loom, not(shuttle)))]
-pub(crate) use loom::{
-    sync,
-    thread,
-    hint,
-};
+pub(crate) use loom::{hint, sync, thread};
 
 #[cfg(all(shuttle, not(loom)))]
-pub(crate) use shuttle::{
-    sync,
-    thread,
-    hint
-};
+pub(crate) use shuttle::{hint, sync, thread};
