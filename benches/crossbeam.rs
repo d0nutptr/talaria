@@ -24,7 +24,9 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
             let start = Instant::now();
 
             for _ in 0..iterations {
-                sender.send([0u8; DEFAULT_OBJECT_SIZE]).expect("send failed");
+                sender
+                    .send([0u8; DEFAULT_OBJECT_SIZE])
+                    .expect("send failed");
             }
 
             drop(sender);

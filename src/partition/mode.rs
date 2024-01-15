@@ -3,10 +3,12 @@ use crate::sync_types::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum PartitionMode {
-    /// Marks a partition as "exclusive" which means that only one consumer can access it at a time.
+    /// Marks a partition as "exclusive" which means that only one consumer can access it at a
+    /// time.
     Exclusive { in_use: Arc<AtomicBool> },
 
-    /// Marks a partition as "concurrent" which means that multiple consumers can access it simultaneously.
+    /// Marks a partition as "concurrent" which means that multiple consumers can access it
+    /// simultaneously.
     Concurrent,
 }
 

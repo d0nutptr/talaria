@@ -50,8 +50,8 @@ impl<T> Channel<T> {
 
     /// Acquires access to the specified exclusive partition
     ///
-    /// If the partition ID is invalid, or the cited partition is not exclusive, or this exclusive partition is
-    /// currently in use, an error is returned.
+    /// If the partition ID is invalid, or the cited partition is not exclusive, or this exclusive
+    /// partition is currently in use, an error is returned.
     pub fn get_exclusive_partition(
         &self,
         partition_id: usize,
@@ -61,7 +61,8 @@ impl<T> Channel<T> {
 
     /// Acquires access to the specified concurrent partition
     ///
-    /// If the partition ID is invalid, or the cited partition is not concurrent, an error is returned.
+    /// If the partition ID is invalid, or the cited partition is not concurrent, an error is
+    /// returned.
     pub fn get_concurrent_partition(
         &self,
         partition_id: usize,
