@@ -1,6 +1,10 @@
 use crate::sync_types::sync::atomic::AtomicBool;
 use crate::sync_types::sync::Arc;
 
+/// Defines the mode the partition or reservation operates in.
+///
+/// This is used to determine how the partition is accessed and changes the underlying mechanism by
+/// which reservations and partitions are acquired.
 #[derive(Debug, Clone)]
 pub enum PartitionMode {
     /// Marks a partition as "exclusive" which means that only one consumer can access it at a
@@ -27,7 +31,7 @@ impl PartitionMode {
 /// Marks a partition as "exclusive" which means that only one consumer can
 /// access it at a time.
 ///
-/// This mode uses a fast, non-atomic reservation system.
+/// This mode uses a fast, atomic reservation system.
 #[derive(Debug)]
 pub struct Exclusive {
     pub(crate) in_use: Arc<AtomicBool>,

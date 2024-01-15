@@ -12,6 +12,14 @@ use crate::sync_types::hint::spin_loop;
 use crate::sync_types::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync_types::thread::park;
 
+/// Partitions represent a distinct "state" of the data managed by a channel
+///
+/// Partitions have two modes: [Exclusive](Exclusive) or [Concurrent](Concurrent) which controls
+/// whether or not multiple instances of the partition can be held at once.
+///
+/// Partition handles can be created by fetching the partition using
+/// [get_exclusive_partition](crate::channel::Channel::get_exclusive_partition)
+/// or [get_concurrent_partition](crate::channel::Channel::get_concurrent_partition).
 #[derive(Debug)]
 pub struct Partition<'c, M: PartitionModeT, T> {
     partition_state: NonNull<PartitionStateInner>,
@@ -27,9 +35,23 @@ pub struct Partition<'c, M: PartitionModeT, T> {
 }
 
 impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
+    /// Returns true if this partition is the primary partition
+    ///
+    /// Primary partitions are the first defined partition in the partition ring. If this partition
+    /// is the primary partition then it will manage all of the data in the channel when the
+    /// channel is first built.
     #[inline]
     pub fn is_primary_partition(&self) -> bool {
         *self.partition_state().partition_id == 0
+    }
+
+    /// Returns the total number of elements available in the associated channel
+    ///
+    /// This does *not* return the length of the partition, but the total number of all elements in
+    /// the associated channel
+    #[inline]
+    pub fn ring_size(&self) -> usize {
+        self.ring_size
     }
 
     #[inline]
@@ -50,11 +72,6 @@ impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
     #[inline]
     fn boundary_signal(&self) -> &CachePadded<BlockingWaitStrategy> {
         &self.boundary_state().waker
-    }
-
-    #[inline]
-    pub fn ring_size(&self) -> usize {
-        self.ring_size
     }
 
     fn estimate_remaining(&mut self) -> usize {
@@ -126,6 +143,10 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         }
     }
 
+    /// Attempts to grab a reservation of the specified size on this partition.
+    ///
+    /// If the amount is 0, greater than the ring size, or if not enough space is available, an
+    /// error is returned.
     pub fn try_reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Exclusive, T>> {
         // 1. check if there is enough space
         if amount == 0 {
@@ -160,6 +181,11 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         ))
     }
 
+    /// Attempts to grab a reservation of the remaining space on this partition.
+    ///
+    /// The number of remaining element is estimated and then attempted to be fetched from the
+    /// partition. This method provides *no guarantee* that if it succeeds, *all* of the
+    /// remaining elements are fetched.
     pub fn try_reserve_remaining(&mut self) -> TalariaResult<Reservation<Exclusive, T>> {
         let estimated = self.estimate_remaining();
 
@@ -169,7 +195,8 @@ impl<'c, T> Partition<'c, Exclusive, T> {
     /// Acquires a reservation of the requested size on this partition.
     ///
     /// This method is blocking in that it will continue to try acquiring the
-    /// reservation until available
+    /// reservation until available. It will return an error if the requested amount is 0 or greater
+    /// than the ring size.
     pub fn reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Exclusive, T>> {
         // 1. check if there is enough space
         if amount == 0 {
@@ -210,6 +237,10 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         ))
     }
 
+    /// Acquires a reservation of the remaining space on this partition.
+    ///
+    /// This method blocks until at least 1 element is available to be reserved, then returns
+    /// a reservation of all available elements.
     pub fn reserve_remaining(&mut self) -> TalariaResult<Reservation<Exclusive, T>> {
         // wait until we get a reservation with _at least_ 1 element in it
         let AvailableReservation {
@@ -271,6 +302,11 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         }
     }
 
+    /// Attempts to grab a reservation of the specified size on this partition.
+    ///
+    /// If the amount is 0, greater than the ring size, or if not enough space is available, an
+    /// error is returned. This method can also fail spuriously if another thread has already
+    /// reserved space on this partition in the middle of the reservation process.
     pub fn try_reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Concurrent, T>> {
         // 1. check if there is enough space
         if amount > self.ring_size() {
@@ -311,6 +347,11 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         ))
     }
 
+    /// Attempts to grab a reservation of the remaining space on this partition.
+    ///
+    /// The number of remaining element is estimated and then attempted to be fetched from the
+    /// partition. This method provides *no guarantee* that if it succeeds, *all* of the
+    /// remaining elements are fetched.
     pub fn try_reserve_remaining(&mut self) -> TalariaResult<Reservation<Concurrent, T>> {
         let estimated = self.estimate_remaining();
         self.try_reserve(estimated)
@@ -319,7 +360,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
     /// Acquires a reservation of the requested size on this partition.
     ///
     /// This method is blocking in that it will continue to try acquiring the
-    /// reservation until available
+    /// reservation until available.
     pub fn reserve(&mut self, amount: usize) -> TalariaResult<Reservation<Concurrent, T>> {
         // 1. check if there is enough space
         if amount > self.ring_size() {
@@ -370,6 +411,10 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         ))
     }
 
+    /// Acquires a reservation of the remaining space on this partition.
+    ///
+    /// This method blocks until at least 1 element is available to be reserved, then returns
+    /// a reservation of all available elements.
     pub fn reserve_remaining(&mut self) -> TalariaResult<Reservation<Concurrent, T>> {
         let (reserved_index, new_reserved_index, available) = loop {
             let AvailableReservation {
@@ -417,12 +462,12 @@ impl Drop for Exclusive {
     }
 }
 
-#[inline]
 /// checks if the partition has enough room for the requested amount of space,
 /// returning the initial index if so
 ///
 /// this function will also refresh the cached boundary index if not enough
 /// space was determined to be available
+#[inline]
 fn get_reserved_index_if_enough_space_available<M: PartitionModeT, T>(
     requested: usize,
     partition: &mut Partition<'_, M, T>,
