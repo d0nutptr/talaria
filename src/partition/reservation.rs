@@ -9,6 +9,10 @@ use crate::partition::wait::WaitStrategy;
 use crate::partition::Exclusive;
 use crate::sync_types::hint::spin_loop;
 
+/// Represents exclusive ownership to a section of data in a partition.
+///
+/// If you have a reservation, all of the data inside of the reservation are safe to read from and
+/// write to. Reservations are created with partition's various reservation methods.
 pub struct Reservation<'p, M, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
@@ -41,10 +45,12 @@ impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
 }
 
 impl<M, T> Reservation<'_, M, T> {
+    /// Returns the number of elements in the reservation.
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns `true` if the reservation contains no elements.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -53,6 +59,7 @@ impl<M, T> Reservation<'_, M, T> {
         unsafe { self.partition_state.as_ref() }
     }
 
+    /// Creates a read-only iterator over the reservation.
     pub fn iter(&self) -> Iter<T> {
         Iter {
             ring_ptr: self.ring_ptr,
@@ -65,6 +72,7 @@ impl<M, T> Reservation<'_, M, T> {
         }
     }
 
+    /// Creates a mutable iterator over the reservation.
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
             ring_ptr: self.ring_ptr,
@@ -79,6 +87,11 @@ impl<M, T> Reservation<'_, M, T> {
 }
 
 impl<T> Reservation<'_, Exclusive, T> {
+    /// Reduces the number of elements reserved by the reservation.
+    ///
+    /// Keep in mind that even after a reservation is reduced, the elements that were written to
+    /// (but removed) will still hold the new changes. This means that it's important not to
+    /// change data if it's important to keep the data in an unaltered state until needed.
     pub fn retain(&mut self, new_size: usize) -> TalariaResult<()> {
         if new_size > self.len {
             return Err(crate::error::TalariaError::ReservationRetainTooLarge {
@@ -148,6 +161,7 @@ impl<M, T> Drop for Reservation<'_, M, T> {
     }
 }
 
+/// A read-only iterator created by [iter()](Reservation::iter).
 pub struct Iter<'r, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
@@ -248,6 +262,7 @@ impl<T> ProjectedIndexing for Iter<'_, T> {
     }
 }
 
+/// A mutable iterator created by [iter_mut()](Reservation::iter_mut).
 pub struct IterMut<'r, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,

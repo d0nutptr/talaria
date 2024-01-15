@@ -1,4 +1,5 @@
 use std::time::Duration;
+
 use talaria::channel::Channel;
 
 const MAX_TEST_TIME: Duration = Duration::from_secs(3 * 60); // 3 minutes
@@ -28,9 +29,7 @@ fn retained_partition_reduces_committed_index_march() {
         let receiver_channel = sender_channel.clone();
 
         let sender_handle = loom::thread::spawn(move || {
-            let mut partition = sender_channel
-                .get_exclusive_partition(0)
-                .unwrap();
+            let mut partition = sender_channel.get_exclusive_partition(0).unwrap();
 
             // reserve two elements.
             let mut reservation = partition.reserve(2).unwrap();
@@ -45,27 +44,28 @@ fn retained_partition_reduces_committed_index_march() {
             assert_eq!(reservation.len(), 1, "reservation did not retain properly");
 
             // update all "reserved" elements to the value `1`
-            reservation
-                .iter_mut()
-                .for_each(|elem| *elem = 1);
+            reservation.iter_mut().for_each(|elem| *elem = 1);
 
             // drop the reservation, which should only increment the committed index by one
         });
 
         let receiver_handle = loom::thread::spawn(move || {
-            let mut partition = receiver_channel
-                .get_exclusive_partition(1)
-                .unwrap();
+            let mut partition = receiver_channel.get_exclusive_partition(1).unwrap();
 
-            let reservation = partition
-                .reserve(1)
-                .unwrap();
+            let reservation = partition.reserve(1).unwrap();
 
             // enforce that the reservation only has 1 element
-            assert_eq!(reservation.len(), 1, "reservation is not the proper size on the second thread");
+            assert_eq!(
+                reservation.len(),
+                1,
+                "reservation is not the proper size on the second thread"
+            );
 
             // enforce the reservation value is accurate
-            assert_eq!(reservation[0], 1, "value expected to be `1` as assigned by the first thread");
+            assert_eq!(
+                reservation[0], 1,
+                "value expected to be `1` as assigned by the first thread"
+            );
 
             // drop the reservation
             drop(reservation);
@@ -73,7 +73,10 @@ fn retained_partition_reduces_committed_index_march() {
             // we should not be able to _attempt_ to reserve another element.
             // this will succeed, if retain failed to work properly
             // this will "fail", if retain only moved the pointer forward once
-            assert!(partition.try_reserve(1).is_err(), "reservation should have failed");
+            assert!(
+                partition.try_reserve(1).is_err(),
+                "reservation should have failed"
+            );
         });
 
         sender_handle.join().unwrap();
