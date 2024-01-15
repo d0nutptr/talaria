@@ -1,5 +1,7 @@
 use criterion::{BenchmarkId, Criterion};
 
+pub const DEFAULT_OBJECT_SIZE: usize = 16;
+
 #[derive(Debug)]
 pub struct BenchArgs {
     pub channel_size: usize,

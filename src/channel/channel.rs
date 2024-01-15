@@ -7,6 +7,7 @@ use crate::error::{TalariaError, TalariaResult};
 use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode};
 use crate::sync_types::sync::Arc;
 
+/// Manages a fixed collection of objects and partitions to manage these objects.
 #[derive(Debug, Clone)]
 pub struct Channel<T> {
     inner: Arc<Inner<T>>,
@@ -31,8 +32,41 @@ impl<T> Channel<T> {
         })
     }
 
+    /// Creates a channel [Builder](Builder) to configure a new channel.
+    /// ```
+    /// # use talaria::channel::Channel;
+    /// # let some_objects = vec![0, 1, 2, 3];
+    /// let channel = Channel::builder()
+    ///     .add_exclusive_partition()
+    ///     .add_exclusive_partition()
+    ///     .build(some_objects)
+    ///     .unwrap();
+    ///
+    /// let partition = channel.get_exclusive_partition(0).unwrap();
+    /// ```
     pub fn builder() -> Builder<T> {
         Builder::new()
+    }
+
+    /// Acquires access to the specified exclusive partition
+    ///
+    /// If the partition ID is invalid, or the cited partition is not exclusive, or this exclusive partition is
+    /// currently in use, an error is returned.
+    pub fn get_exclusive_partition(
+        &self,
+        partition_id: usize,
+    ) -> TalariaResult<Partition<Exclusive, T>> {
+        self.inner.get_exclusive_partition(partition_id)
+    }
+
+    /// Acquires access to the specified concurrent partition
+    ///
+    /// If the partition ID is invalid, or the cited partition is not concurrent, an error is returned.
+    pub fn get_concurrent_partition(
+        &self,
+        partition_id: usize,
+    ) -> TalariaResult<Partition<Concurrent, T>> {
+        self.inner.get_concurrent_partition(partition_id)
     }
 }
 

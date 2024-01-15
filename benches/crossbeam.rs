@@ -13,7 +13,7 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
             let BenchArgs {
                 channel_size, ..
             } = *args;
-            let (sender, receiver) = std::sync::mpsc::sync_channel(channel_size);
+            let (sender, receiver) = crossbeam_channel::bounded(channel_size);
 
             let reader_thread = std::thread::spawn(move || {
                 while let Ok(msg) = receiver.recv() {
@@ -38,16 +38,16 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
 fn run_benchmark(c: &mut Criterion) {
     // since mpsc doesn't expose an api for fetching multiple elements at a time,
     // we'll just ignore chunking for now in fairness to std::sync::mpsc
-    bench_scenarios(c, "std::sync::mpsc", run_benchmark_with_args, vec![
+    bench_scenarios(c, "crossbeam-channel", run_benchmark_with_args, vec![
         BenchArgs::new(1024, 1),
         BenchArgs::new(4096, 1),
     ]);
 }
 
 criterion_group! {
-    name = mpsc_channel;
+    name = crossbeam_channel;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
     targets = run_benchmark
 }
 
-criterion_main!(mpsc_channel);
+criterion_main!(crossbeam_channel);

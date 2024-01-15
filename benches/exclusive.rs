@@ -6,9 +6,9 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use pprof::criterion::{Output, PProfProfiler};
 use talaria::channel::Channel;
 
-use crate::common::{bench_scenarios, BenchArgs};
+use crate::common::{bench_scenarios, BenchArgs, DEFAULT_OBJECT_SIZE};
 
-fn run_exclusive_benchmark<M>(
+fn run_exclusive_benchmark<M: Default>(
     channel: &Channel<M>,
     partition_id: usize,
     chunk: usize,
@@ -17,17 +17,16 @@ fn run_exclusive_benchmark<M>(
     let mut partition = channel.get_exclusive_partition(partition_id).unwrap();
 
     for _ in 0..amount {
-        let reservation = partition.reserve(chunk).unwrap();
+        let mut reservation = partition.reserve(chunk).unwrap();
 
-        for msg in reservation.iter() {
-            black_box(msg);
+        for msg in reservation.iter_mut() {
+            black_box(&msg);
+            *msg = M::default();
         }
     }
 }
 
 pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchArgs) {
-    const OBJECT_SIZE: usize = 64;
-
     c.bench_with_input(id, &args, |b, args| {
         b.iter_custom(|iterations| {
             let BenchArgs {
@@ -35,7 +34,7 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
                 chunk_size,
             } = *args;
 
-            let objects = vec![[0u8; OBJECT_SIZE]; channel_size];
+            let objects = vec![[0u8; DEFAULT_OBJECT_SIZE]; channel_size];
 
             let channel = Channel::builder()
                 .add_exclusive_partition()

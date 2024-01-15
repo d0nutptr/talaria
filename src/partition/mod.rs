@@ -5,5 +5,10 @@ mod state;
 mod wait;
 
 pub use mode::{Concurrent, Exclusive, PartitionMode};
-pub(crate) use partition::Partition;
+pub use partition::Partition;
 pub(crate) use state::PartitionState;
+pub use reservation::{
+    Reservation,
+    IterMut,
+    Iter
+};
