@@ -90,6 +90,16 @@ impl<T> Reservation<'_, Exclusive, T> {
         self.end_index = self.start_index.wrapping_add(new_size);
         self.len = new_size;
 
+        // normally, this would be dangerous to set reserved index immediately
+        // because if the reserved index and committed index match, then an exclusive reservation
+        // can be allocated however, as long as *this* reservation exists, another exclusive
+        // partition cannot be created because getting an exclusive reservation requires
+        // `&mut` and only 1 partition handle can exist at a time. therefore, we can update
+        // this immediately
+        self.partition_state()
+            .reserved_index()
+            .store(self.end_index, std::sync::atomic::Ordering::SeqCst);
+
         Ok(())
     }
 }
@@ -123,12 +133,13 @@ impl<M, T> Drop for Reservation<'_, M, T> {
             // should we remove this? should we get `wait` here and park?
         }
 
-        // todo: Switching from SeqCst to Release ordering here results in a massive
-        // performance improvement. test that this is safe it's our turn now, so
-        // let's commit the reservation
         let end = self.end_index;
         let p_state = self.partition_state();
         let c_index = p_state.committed_index();
+
+        // todo: Switching from SeqCst to Release ordering here results in a massive
+        // performance improvement. test that this is safe it's our turn now, so
+        // let's commit the reservation
         c_index.store(end, std::sync::atomic::Ordering::Release);
 
         // notify all observers that we updated the committed index
