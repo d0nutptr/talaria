@@ -1,6 +1,6 @@
 [package]
 name = "talaria"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 authors = ["Nathanial Lattimer <d0nut@resync.gg>"]
