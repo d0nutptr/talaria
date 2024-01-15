@@ -29,6 +29,10 @@ impl PartitionStateInner {
     pub(crate) fn committed_index(&self) -> &CachePadded<AtomicUsize> {
         &self.committed_index
     }
+
+    pub(crate) fn reserved_index(&self) -> &CachePadded<AtomicUsize> {
+        &self.reserved_index
+    }
 }
 
 #[derive(Debug)]
