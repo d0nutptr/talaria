@@ -2,6 +2,9 @@
 
 `talaria` is a high performance, cyclic message passing library with bounded FIFO semantics.
 
+> [!CAUTION]
+> While `talaria` has been validated with *some* correctness tests, it should still be considered unstable and unproven at this time.
+
 `talaria` is broken up into three main concepts:
 * Channels
 * Partitions
@@ -123,7 +126,7 @@ fn main() {
 Benchmarks are written for both exclusive and concurrent two-thread partition scenarios, as well as
 the equivalent tests with `std::sync::mpsc` and `crossbeam`'s bounded channels.
 
-The following is a sample of benchmarking on my machine:
+The following is a sample of benchmarking on my machine (i9-9900k, 64Gb 3200mhz RAM):
 
 ## Exclusive
 ![Exclusive Partition Benchmark](imgs/exclusive.svg)
@@ -136,3 +139,15 @@ The following is a sample of benchmarking on my machine:
 
 ## crossbeam
 ![crossbeam Benchmark](imgs/crossbeam.svg)
+
+# Correctness Tests
+`talaria` comes with a (relatively incomplete) suite of correctness tests using both [`loom`](https://github.com/tokio-rs/loom)
+and [`shuttle`](https://github.com/awslabs/shuttle). To run them, do the following:
+
+## Loom
+`RUSTFLAGS="--cfg loom" cargo test`
+
+## Shuttle
+`RUSTFLAGS="--cfg shuttle" cargo test`
+
+Some tests are timebound to prevent them from running either indefinitely or an excessively long while. Expect tests to take a few minutes, though.
