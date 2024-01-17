@@ -597,7 +597,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
     reservation_strategy: ReservationIndexStrategy,
 ) -> TalariaResult<AvailableReservation> {
     const MAX_SPIN_LOOP: u32 = 1 << 12;
-    const DEFAULT_SPINS: u32 = 1 << 4;
+    const DEFAULT_SPINS: u32 = 1 << 0;
 
     let mut spins: u32 = DEFAULT_SPINS;
     let mut registered = false;
