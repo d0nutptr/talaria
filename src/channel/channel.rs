@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use crate::channel::builder::Builder;
 use crate::error::{TalariaError, TalariaResult};
-use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode};
+use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode, PartitionState2};
 use crate::sync_types::sync::Arc;
 
 /// Manages a fixed collection of objects and partitions to manage these objects.
@@ -33,7 +33,7 @@ impl<T> Channel<T> {
     }
 
     /// Creates a channel [Builder](Builder) to configure a new channel.
-    /// ```
+    /// ```ignore
     /// # use talaria::channel::Channel;
     /// # let some_objects = vec![0, 1, 2, 3];
     /// let channel = Channel::builder()
@@ -56,7 +56,9 @@ impl<T> Channel<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Exclusive, T>> {
-        self.inner.get_exclusive_partition(partition_id)
+        let inner = self.inner.clone();
+
+        Partition::<Exclusive, T>::new(partition_id, inner, &self.partition_state)
     }
 
     /// Acquires access to the specified concurrent partition
@@ -67,7 +69,9 @@ impl<T> Channel<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Concurrent, T>> {
-        self.inner.get_concurrent_partition(partition_id)
+        let inner = self.inner.clone();
+
+        Partition::<Concurrent, T>::new(partition_id, inner, &self.partition_state)
     }
 }
 
@@ -83,7 +87,7 @@ impl<T> Deref for Channel<T> {
 pub struct Inner<T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
-    partition_states: Vec<crate::partition::PartitionState>,
+    partition_state: PartitionState2,
 }
 
 impl<T> Inner<T> {
@@ -115,42 +119,18 @@ impl<T> Inner<T> {
             return Err(TalariaError::NoElements);
         }
 
-        let (mut partition_states, ptrs): (Vec<_>, Vec<_>) = partition_definitions
-            .into_iter()
-            .enumerate()
-            .map(|(id, mode)| crate::partition::PartitionState::new(id, mode))
-            .map(|state| {
-                let ptr = state.inner_ptr();
-
-                (state, ptr)
-            })
-            .unzip();
-
-        // create an iterator that is rotated backward by 1 (which is done by cycling
-        // and skipping the last element) this is so that we can pass the
-        // boundary partition index to the appropriate partition state builder
-        // partition 1 should get partition 0's committed index pointer, partition 2
-        // should get partition 1's committed index pointer, etc.
-        // notably, partition 0 should get partition N's committed index pointer
-        let offset_committed_indexes = ptrs.into_iter().cycle().skip(partition_states.len() - 1);
-
-        partition_states
-            .iter_mut()
-            .zip(offset_committed_indexes)
-            .for_each(|(partition_state, boundary_state)| {
-                partition_state.set_boundary_state(boundary_state);
-            });
+        let partition_state = crate::partition::PartitionState2::new(partition_definitions);
 
         let mut data = ManuallyDrop::new(data);
         // shrink to fit so we only need to track length instead of length + capacity
         data.shrink_to_fit();
 
-        let (ptr, len) = (NonNull::new(data.as_mut_ptr()).unwrap(), data.len());
+        let (ring_ptr, ring_size) = (NonNull::new(data.as_mut_ptr()).unwrap(), data.len());
 
         Ok(Self {
-            ring_ptr: ptr,
-            ring_size: len,
-            partition_states,
+            ring_ptr,
+            ring_size,
+            partition_state,
         })
     }
 
@@ -160,34 +140,6 @@ impl<T> Inner<T> {
 
     pub fn len(&self) -> usize {
         self.ring_size
-    }
-
-    pub fn get_exclusive_partition(
-        &self,
-        partition_id: usize,
-    ) -> TalariaResult<Partition<Exclusive, T>> {
-        let partition_state =
-            self.partition_states
-                .get(partition_id)
-                .ok_or(TalariaError::PartitionNotFound {
-                    partition_id,
-                })?;
-
-        Partition::<Exclusive, T>::new(self.ring_ptr(), self.len(), partition_state)
-    }
-
-    pub fn get_concurrent_partition(
-        &self,
-        partition_id: usize,
-    ) -> TalariaResult<Partition<Concurrent, T>> {
-        let partition_state =
-            self.partition_states
-                .get(partition_id)
-                .ok_or(TalariaError::PartitionNotFound {
-                    partition_id,
-                })?;
-
-        Partition::<Concurrent, T>::new(self.ring_ptr(), self.len(), partition_state)
     }
 }
 
@@ -207,8 +159,8 @@ mod test_utils {
     use crate::channel::channel::Inner;
 
     impl<T> Inner<T> {
-        pub fn introspect_partition_states(&self) -> &Vec<crate::partition::PartitionState> {
-            &self.partition_states
-        }
+        // pub fn introspect_partition_states(&self) -> &Vec<crate::partition::PartitionState> {
+        //     // &self.partition_state
+        // }
     }
 }

@@ -24,6 +24,10 @@ loom = "0.7"
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 crossbeam-channel = "0.5"
 
+[profile.bench]
+debug = true
+#lto = true
+
 [[bench]]
 name = "exclusive"
 harness = false

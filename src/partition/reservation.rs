@@ -1,11 +1,12 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use std::ptr::NonNull;
+use std::sync::atomic::AtomicUsize;
+use crossbeam_utils::CachePadded;
 
 use crate::error::TalariaResult;
 use crate::partition::mode::PartitionModeT;
-use crate::partition::state::PartitionStateInner;
-use crate::partition::wait::WaitStrategy;
+use crate::partition::wait::{BlockingWaitStrategy, WaitStrategy};
 use crate::partition::Exclusive;
 use crate::sync_types::hint::spin_loop;
 
@@ -13,13 +14,15 @@ use crate::sync_types::hint::spin_loop;
 ///
 /// If you have a reservation, all of the data inside of the reservation are safe to read from and
 /// write to. Reservations are created with partition's various reservation methods.
-pub struct Reservation<'p, M, T> {
+pub struct Reservation<'p, M: PartitionModeT, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
     start_index: usize,
     end_index: usize,
+    committed_index: NonNull<CachePadded<AtomicUsize>>,
+    reserved_index: NonNull<CachePadded<AtomicUsize>>,
+    waker: NonNull<CachePadded<BlockingWaitStrategy>>,
     len: usize,
-    partition_state: NonNull<PartitionStateInner>,
     inner: PhantomData<&'p M>,
 }
 
@@ -30,21 +33,25 @@ impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
         start_index: usize,
         end_index: usize,
         len: usize,
-        partition_state: NonNull<PartitionStateInner>,
+        committed_index: NonNull<CachePadded<AtomicUsize>>,
+        reserved_index: NonNull<CachePadded<AtomicUsize>>,
+        waker: NonNull<CachePadded<BlockingWaitStrategy>>,
     ) -> Reservation<'p, M, T> {
         Self {
             ring_ptr,
             ring_size,
             start_index,
             end_index,
+            committed_index,
+            reserved_index,
+            waker,
             len,
-            partition_state,
             inner: PhantomData,
         }
     }
 }
 
-impl<M, T> Reservation<'_, M, T> {
+impl<M: PartitionModeT, T> Reservation<'_, M, T> {
     /// Returns the number of elements in the reservation.
     pub fn len(&self) -> usize {
         self.len
@@ -55,8 +62,16 @@ impl<M, T> Reservation<'_, M, T> {
         self.len == 0
     }
 
-    fn partition_state(&self) -> &PartitionStateInner {
-        unsafe { self.partition_state.as_ref() }
+    fn committed_index(&self) -> &CachePadded<AtomicUsize> {
+        unsafe { self.committed_index.as_ref() }
+    }
+
+    fn reserved_index(&self) -> &CachePadded<AtomicUsize> {
+        unsafe { self.reserved_index.as_ref() }
+    }
+
+    fn waker(&self) -> &CachePadded<BlockingWaitStrategy> {
+        unsafe { self.waker.as_ref() }
     }
 
     /// Creates a read-only iterator over the reservation.
@@ -109,17 +124,15 @@ impl<T> Reservation<'_, Exclusive, T> {
         // partition cannot be created because getting an exclusive reservation requires
         // `&mut` and only 1 partition handle can exist at a time. therefore, we can update
         // this immediately
-        self.partition_state()
-            .reserved_index()
+        self.reserved_index()
             .store(self.end_index, std::sync::atomic::Ordering::SeqCst);
 
         Ok(())
     }
 }
 
-impl<M, T> Drop for Reservation<'_, M, T> {
+impl<M: PartitionModeT, T> Drop for Reservation<'_, M, T> {
     fn drop(&mut self) {
-        const SPIN: usize = 16;
         // if the reservation is empty, do nothing
         if self.is_empty() {
             return;
@@ -128,11 +141,12 @@ impl<M, T> Drop for Reservation<'_, M, T> {
         // todo implement a less expensive spinlock here
         // wait for our turn to move the committed index forward
         while self
-            .partition_state()
             .committed_index()
             .load(std::sync::atomic::Ordering::Acquire)
             != self.start_index
         {
+            const SPIN: usize = 16;
+
             for _ in 0..SPIN {
                 spin_loop();
             }
@@ -142,22 +156,19 @@ impl<M, T> Drop for Reservation<'_, M, T> {
 
             // todo: we should probably consider doing something special if this
             // is a concurrent reservation so we can make sure not to pound the
-            // CPU too hard std::thread::yield_now(); // todo:
-            // should we remove this? should we get `wait` here and park?
+            // CPU too hard std::thread::yield_now();
+            // todo: should we remove this? should we get `wait` here and park?
         }
-
-        let end = self.end_index;
-        let p_state = self.partition_state();
-        let c_index = p_state.committed_index();
 
         // todo: Switching from SeqCst to Release ordering here results in a massive
         // performance improvement. test that this is safe it's our turn now, so
         // let's commit the reservation
-        c_index.store(end, std::sync::atomic::Ordering::Release);
+        self.committed_index()
+            .store(self.end_index, std::sync::atomic::Ordering::Release);
 
         // notify all observers that we updated the committed index
         // todo: determine if there is a better way, since this is expensive on drop
-        self.partition_state().waker.notify();
+        self.waker().notify();
     }
 }
 
@@ -172,7 +183,7 @@ pub struct Iter<'r, T> {
     inner_phantom: PhantomData<&'r ()>,
 }
 
-impl<M, T> Index<usize> for Reservation<'_, M, T> {
+impl<M: PartitionModeT, T> Index<usize> for Reservation<'_, M, T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -187,7 +198,7 @@ impl<M, T> Index<usize> for Reservation<'_, M, T> {
     }
 }
 
-impl<M, T> IndexMut<usize> for Reservation<'_, M, T> {
+impl<M: PartitionModeT, T> IndexMut<usize> for Reservation<'_, M, T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         if index >= self.len() {
             panic!("index out of bounds");
@@ -234,7 +245,7 @@ trait ProjectedIndexing {
     fn get_physical_address(&self, virtual_address: usize) -> usize;
 }
 
-impl<M, T> ProjectedIndexing for Reservation<'_, M, T> {
+impl<M: PartitionModeT, T> ProjectedIndexing for Reservation<'_, M, T> {
     fn len(&self) -> usize {
         self.end_index.wrapping_sub(self.start_index)
     }

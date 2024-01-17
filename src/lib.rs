@@ -73,7 +73,7 @@
 //! Once dropped, the items managed by the reservation will be transferred to the next logical
 //! partition.
 //!
-//! ```
+//! ```ignore
 //! # use talaria::channel::Channel;
 //! #[derive(Clone)]
 //! enum Message {

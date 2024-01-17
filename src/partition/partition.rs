@@ -1,16 +1,17 @@
-use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 use crossbeam_utils::CachePadded;
+use crate::channel::ChannelInner;
 
 use crate::error::{TalariaError, TalariaResult};
 use crate::partition::mode::{Concurrent, Exclusive, PartitionMode, PartitionModeT};
+use crate::partition::PartitionState2;
 use crate::partition::reservation::Reservation;
-use crate::partition::state::{PartitionState, PartitionStateInner};
 use crate::partition::wait::{BlockingWaitStrategy, Token, WaitStrategy};
 use crate::sync_types::hint::spin_loop;
 use crate::sync_types::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync_types::thread::park;
+use crate::sync_types::sync::Arc;
 
 /// Partitions represent a distinct "state" of the data managed by a channel
 ///
@@ -21,20 +22,25 @@ use crate::sync_types::thread::park;
 /// [get_exclusive_partition](crate::channel::Channel::get_exclusive_partition)
 /// or [get_concurrent_partition](crate::channel::Channel::get_concurrent_partition).
 #[derive(Debug)]
-pub struct Partition<'c, M: PartitionModeT, T> {
-    partition_state: NonNull<PartitionStateInner>,
-    boundary_state: NonNull<PartitionStateInner>,
+pub struct Partition<M: PartitionModeT, T> {
     ring_ptr: NonNull<T>,
     ring_size: usize,
+    partition_id: usize,
+    committed_index: NonNull<CachePadded<AtomicUsize>>,
+    reserved_index: NonNull<CachePadded<AtomicUsize>>,
+    boundary_index: NonNull<CachePadded<AtomicUsize>>,
+    waker: NonNull<CachePadded<BlockingWaitStrategy>>,
     cached_boundary_index: usize,
     baseline_partition_size: usize,
     #[allow(dead_code)]
     mode: M,
     token: Token,
-    inner: PhantomData<&'c ()>,
+    _inner: Arc<ChannelInner<T>>,
 }
 
-impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
+unsafe impl<M: PartitionModeT, T> Send for Partition<M, T> where Box<T>: Send {}
+
+impl<M: PartitionModeT, T> Partition<M, T> {
     /// Returns true if this partition is the primary partition
     ///
     /// Primary partitions are the first defined partition in the partition ring. If this partition
@@ -42,7 +48,21 @@ impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
     /// channel is first built.
     #[inline]
     pub fn is_primary_partition(&self) -> bool {
-        *self.partition_state().partition_id == 0
+        self.partition_id == 0
+    }
+
+    #[inline]
+    fn reserved_index(&self) -> &CachePadded<AtomicUsize> {
+        unsafe { self.reserved_index.as_ref() }
+    }
+
+    #[inline]
+    fn boundary_index(&self) -> &CachePadded<AtomicUsize> {
+        unsafe { self.boundary_index.as_ref() }
+    }
+
+    fn boundary_signal(&self) -> &CachePadded<BlockingWaitStrategy> {
+        unsafe { self.waker.as_ref() }
     }
 
     /// Returns the total number of elements available in the associated channel
@@ -54,29 +74,8 @@ impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
         self.ring_size
     }
 
-    #[inline]
-    pub(crate) fn partition_state(&self) -> &PartitionStateInner {
-        unsafe { self.partition_state.as_ref() }
-    }
-
-    #[inline]
-    fn boundary_state(&self) -> &PartitionStateInner {
-        unsafe { self.boundary_state.as_ref() }
-    }
-
-    #[inline]
-    fn boundary_index(&self) -> &CachePadded<AtomicUsize> {
-        &self.boundary_state().committed_index
-    }
-
-    #[inline]
-    fn boundary_signal(&self) -> &CachePadded<BlockingWaitStrategy> {
-        &self.boundary_state().waker
-    }
-
     fn estimate_remaining(&mut self) -> usize {
-        let reserved_index_val = self.partition_state().reserved_index.load(Ordering::SeqCst);
-
+        let reserved_index_val = self.reserved_index().load(Ordering::SeqCst);
         self.cached_boundary_index = self.boundary_index().load(Ordering::SeqCst);
 
         let estimated = self
@@ -93,37 +92,55 @@ impl<'c, M: PartitionModeT, T> Partition<'c, M, T> {
     }
 }
 
-impl<'c, T> Partition<'c, Exclusive, T> {
+impl<T> Partition<Exclusive, T> {
     pub(crate) fn new(
-        ring_ptr: NonNull<T>,
-        ring_size: usize,
-        partition_state: &PartitionState,
+        partition_id: usize,
+        inner: Arc<ChannelInner<T>>,
+        partition_state: &PartitionState2,
     ) -> TalariaResult<Self> {
-        match partition_state.mode() {
-            PartitionMode::Exclusive {
-                ref in_use,
-            } => {
+        let partition_mode = partition_state.partition_mode(partition_id)?;
+
+        match partition_mode {
+            PartitionMode::Exclusive { ref in_use } => {
                 // secure the exclusive partition by marking it as in-use
                 // todo: can this be `Acquire`?
                 in_use
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                    .map_err(|_| TalariaError::ExclusivePartitionInUse {
-                        partition_id: *partition_state.inner().partition_id,
-                    })?;
+                    .map_err(|_| TalariaError::ExclusivePartitionInUse { partition_id })?;
 
                 let exclusive = Exclusive {
                     in_use: in_use.clone(),
                 };
+
+                let ring_ptr = inner.ring_ptr();
+                let ring_size = inner.len();
+                let (
+                    committed_index,
+                    reserved_index,
+                    boundary_index,
+                    waker
+                ) = unsafe {
+                    let committed_index = partition_state.committed_index(partition_id);
+                    let reserved_index = partition_state.reserved_index(partition_id);
+                    let boundary_index = partition_state.boundary_index(partition_id);
+                    let waker = partition_state.waker(partition_id);
+
+                    (committed_index, reserved_index, boundary_index, waker)
+                };
+
                 let mut partition = Self {
+                    partition_id,
                     mode: exclusive,
                     ring_ptr,
                     ring_size,
-                    partition_state: partition_state.inner,
-                    boundary_state: partition_state.boundary_state,
+                    committed_index,
+                    reserved_index,
+                    boundary_index,
+                    waker,
                     cached_boundary_index: 0,
                     baseline_partition_size: 0,
                     token: Token::new(),
-                    inner: PhantomData,
+                    _inner: inner
                 };
 
                 partition.baseline_partition_size = if partition.is_primary_partition() {
@@ -137,9 +154,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
 
                 Ok(partition)
             }
-            _ => Err(TalariaError::PartitionNotExclusive {
-                partition_id: *partition_state.inner().partition_id,
-            }),
+            _ => Err(TalariaError::PartitionNotExclusive { partition_id }),
         }
     }
 
@@ -151,13 +166,13 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         // 1. check if there is enough space
         if amount == 0 {
             return Err(TalariaError::RequestedZeroElements {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
             });
         }
 
         if amount > self.ring_size() {
             return Err(TalariaError::RequestedMoreThanPossible {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
                 requested: amount,
             });
         }
@@ -166,8 +181,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
 
         // 2. attempt to reserve the space
         let new_reserved_index = reserved_index.wrapping_add(amount);
-        self.partition_state()
-            .reserved_index
+        self.reserved_index()
             .store(new_reserved_index, Ordering::SeqCst);
 
         // 3. return the reservation
@@ -177,7 +191,9 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             reserved_index,
             new_reserved_index,
             amount,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
     }
 
@@ -201,13 +217,13 @@ impl<'c, T> Partition<'c, Exclusive, T> {
         // 1. check if there is enough space
         if amount == 0 {
             return Err(TalariaError::RequestedZeroElements {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
             });
         }
 
         if amount > self.ring_size() {
             return Err(TalariaError::RequestedMoreThanPossible {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
                 requested: amount,
             });
         }
@@ -222,8 +238,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
 
         // 2. attempt to reserve the space
         let new_reserved_index = reserved_index.wrapping_add(amount);
-        self.partition_state()
-            .reserved_index
+        self.reserved_index()
             .store(new_reserved_index, Ordering::Release);
 
         // 3. return the reservation
@@ -233,7 +248,9 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             reserved_index,
             new_reserved_index,
             amount,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
     }
 
@@ -254,8 +271,7 @@ impl<'c, T> Partition<'c, Exclusive, T> {
 
         // 2. attempt to reserve the space
         let new_reserved_index = reserved_index.wrapping_add(available);
-        self.partition_state()
-            .reserved_index
+        self.reserved_index()
             .store(new_reserved_index, Ordering::Release);
 
         // 3. return the reservation
@@ -265,25 +281,53 @@ impl<'c, T> Partition<'c, Exclusive, T> {
             reserved_index,
             new_reserved_index,
             available,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
     }
 }
 
-impl<'c, T> Partition<'c, Concurrent, T> {
-    pub(crate) fn new(ptr: NonNull<T>, len: usize, state: &PartitionState) -> TalariaResult<Self> {
-        match state.mode() {
+impl<T> Partition<Concurrent, T> {
+    pub(crate) fn new(
+        partition_id: usize,
+        inner: Arc<ChannelInner<T>>,
+        partition_state: &PartitionState2,
+    ) -> TalariaResult<Self> {
+        let partition_mode = partition_state.partition_mode(partition_id)?;
+
+        match partition_mode {
             PartitionMode::Concurrent => {
+                let ring_ptr = inner.ring_ptr();
+                let ring_size = inner.len();
+
+                let (
+                    committed_index,
+                    reserved_index,
+                    boundary_index,
+                    waker
+                ) = unsafe {
+                    let committed_index = partition_state.committed_index(partition_id);
+                    let reserved_index = partition_state.reserved_index(partition_id);
+                    let boundary_index = partition_state.boundary_index(partition_id);
+                    let waker = partition_state.waker(partition_id);
+
+                    (committed_index, reserved_index, boundary_index, waker)
+                };
+
                 let mut partition = Self {
+                    partition_id,
                     mode: Concurrent,
-                    ring_ptr: ptr,
-                    ring_size: len,
-                    partition_state: state.inner,
-                    boundary_state: state.boundary_state,
+                    ring_ptr,
+                    ring_size,
+                    committed_index,
+                    reserved_index,
+                    boundary_index,
+                    waker,
                     cached_boundary_index: 0,
                     baseline_partition_size: 0,
                     token: Token::new(),
-                    inner: PhantomData,
+                    _inner: inner,
                 };
 
                 partition.baseline_partition_size = if partition.is_primary_partition() {
@@ -296,9 +340,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
 
                 Ok(partition)
             }
-            _ => Err(TalariaError::PartitionNotConcurrent {
-                partition_id: *state.inner().partition_id,
-            }),
+            _ => Err(TalariaError::PartitionNotConcurrent { partition_id }),
         }
     }
 
@@ -311,7 +353,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         // 1. check if there is enough space
         if amount > self.ring_size() {
             return Err(TalariaError::NotEnoughSpace {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
                 requested: amount,
                 available: self.ring_size(),
             });
@@ -321,7 +363,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
 
         // 2. reserve the space
         let new_reserved_index = reserved_index_val.wrapping_add(amount);
-        let reservation_attempt = self.partition_state().reserved_index.compare_exchange(
+        let reservation_attempt = self.reserved_index().compare_exchange(
             reserved_index_val,
             new_reserved_index,
             Ordering::SeqCst,
@@ -331,7 +373,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         if reservation_attempt.is_err() {
             // inform the caller that a reservation is already out on an exclusive partition
             return Err(TalariaError::SpuriousReservationFailure {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
                 requested: amount,
             });
         }
@@ -343,7 +385,9 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             reserved_index_val,
             new_reserved_index,
             amount,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
     }
 
@@ -365,7 +409,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
         // 1. check if there is enough space
         if amount > self.ring_size() {
             return Err(TalariaError::RequestedMoreThanPossible {
-                partition_id: *self.partition_state().partition_id,
+                partition_id: self.partition_id,
                 requested: amount,
             });
         }
@@ -382,7 +426,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             // 2. attempt to reserve the space
             // todo: could this be a weaker order?
             let new_reserved_index = reserved_index.wrapping_add(amount);
-            let reservation_result = self.partition_state().reserved_index.compare_exchange(
+            let reservation_result = self.reserved_index().compare_exchange(
                 reserved_index,
                 new_reserved_index,
                 Ordering::SeqCst,
@@ -407,7 +451,9 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             reserved_index,
             new_reserved_index,
             amount,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
     }
 
@@ -429,7 +475,7 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             // 2. attempt to reserve the space
             let new_reserved_index = reserved_index.wrapping_add(available);
             // todo: can this be `Release`? (probably should be)
-            let reservation_result = self.partition_state().reserved_index.compare_exchange(
+            let reservation_result = self.reserved_index().compare_exchange(
                 reserved_index,
                 new_reserved_index,
                 Ordering::SeqCst,
@@ -448,8 +494,29 @@ impl<'c, T> Partition<'c, Concurrent, T> {
             reserved_index,
             new_reserved_index,
             available,
-            self.partition_state,
+            self.committed_index,
+            self.reserved_index,
+            self.waker
         ))
+    }
+}
+
+impl<T> Clone for Partition<Concurrent, T> {
+    fn clone(&self) -> Self {
+        Partition {
+            ring_ptr: self.ring_ptr,
+            ring_size: self.ring_size,
+            partition_id: self.partition_id,
+            committed_index: self.committed_index,
+            reserved_index: self.reserved_index,
+            boundary_index: self.boundary_index,
+            waker: self.waker,
+            cached_boundary_index: self.cached_boundary_index,
+            baseline_partition_size: self.baseline_partition_size,
+            mode: Concurrent,
+            token: Token::new(),
+            _inner: self._inner.clone(),
+        }
     }
 }
 
@@ -470,14 +537,13 @@ impl Drop for Exclusive {
 #[inline]
 fn get_reserved_index_if_enough_space_available<M: PartitionModeT, T>(
     requested: usize,
-    partition: &mut Partition<'_, M, T>,
+    partition: &mut Partition<M, T>,
 ) -> TalariaResult<usize> {
     let mut has_refreshed_boundary_index = false;
 
     let reserved_index_val = partition
-        .partition_state()
-        .reserved_index
-        .load(Ordering::SeqCst);
+        .reserved_index()
+        .load(Ordering::Acquire);
 
     loop {
         let available_elements = partition
@@ -505,12 +571,12 @@ fn get_reserved_index_if_enough_space_available<M: PartitionModeT, T>(
             // if not enough space was available, but we've never fetched the boundary index
             _ if !has_refreshed_boundary_index => {
                 has_refreshed_boundary_index = true;
-                partition.cached_boundary_index = partition.boundary_index().load(Ordering::SeqCst)
+                partition.cached_boundary_index = partition.boundary_index().load(Ordering::Acquire)
             }
             // if we've already refreshed the boundary and space was still not available, return an error
             _ => {
                 return Err(TalariaError::NotEnoughSpace {
-                    partition_id: *partition.partition_state().partition_id,
+                    partition_id: partition.partition_id,
                     requested,
                     available: available_elements,
                 })
@@ -527,7 +593,7 @@ struct AvailableReservation {
 #[inline]
 fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
     requested: usize,
-    partition: &mut Partition<'_, M, T>,
+    partition: &mut Partition<M, T>,
     reservation_strategy: ReservationIndexStrategy,
 ) -> TalariaResult<AvailableReservation> {
     const MAX_SPIN_LOOP: u32 = 1 << 12;
@@ -538,8 +604,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
     let token = *&partition.token;
 
     let mut reserved_index_val = partition
-        .partition_state()
-        .reserved_index
+        .reserved_index()
         .load(Ordering::Acquire);
 
     loop {
@@ -612,8 +677,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
         if let ReservationIndexStrategy::Pessimistic = reservation_strategy {
             // to be safe, we should update our reserved index as well
             reserved_index_val = partition
-                .partition_state()
-                .reserved_index
+                .reserved_index()
                 .load(Ordering::Acquire);
         }
     }

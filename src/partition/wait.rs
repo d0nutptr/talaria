@@ -65,6 +65,21 @@ impl BlockingWaitStrategy {
             is_empty: AtomicBool::new(true),
         }
     }
+
+    #[cold]
+    fn notify_all(&self) {
+        let mut listeners = self.listeners.lock().unwrap();
+
+        if !self.is_empty.load(Ordering::SeqCst) {
+            // todo: check if we should do what the std library does and only notify one
+            // thread or if we should notify all of them like we do here
+            for (_, thread) in listeners.drain(..) {
+                thread.unpark();
+            }
+
+            self.is_empty.store(listeners.is_empty(), Ordering::SeqCst);
+        }
+    }
 }
 
 impl WaitStrategy for BlockingWaitStrategy {
@@ -76,26 +91,18 @@ impl WaitStrategy for BlockingWaitStrategy {
         // shamelessly taken from mpmc in the std library
         // https://github.com/rust-lang/rust/blob/e51e98dde6a60637b6a71b8105245b629ac3fe77/library/std/src/sync/mpmc/waker.rs#L173
         if !self.is_empty.load(Ordering::SeqCst) {
-            let mut listeners = self.listeners.lock().unwrap();
-
-            if !self.is_empty.load(Ordering::SeqCst) {
-                // todo: check if we should do what the std library does and only notify one
-                // thread or if we should notify all of them like we do here
-                for (_, thread) in listeners.drain(..) {
-                    thread.unpark();
-                }
-
-                self.is_empty.store(listeners.is_empty(), Ordering::SeqCst);
-            }
+            self.notify_all();
         }
     }
 
+    #[cold]
     fn register(&self, token: &Token) {
         let mut listeners = self.listeners.lock().unwrap();
         listeners.push((*token, current_thread()));
         self.is_empty.store(listeners.is_empty(), Ordering::SeqCst);
     }
 
+    #[cold]
     fn unregister(&self, token: &Token) {
         let mut listeners = self.listeners.lock().unwrap();
         listeners.retain(|(t, _)| *t != *token);
