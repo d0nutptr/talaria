@@ -10,7 +10,7 @@ fn exclusive_counter() {
     let channel = Channel::builder()
         .add_exclusive_partition()
         .add_exclusive_partition()
-        .build(vec![0u64; 16])
+        .build(vec![0u64; 4096])
         .unwrap();
 
     let mut main_partition = channel.get_exclusive_partition(MAIN_PARTITION).unwrap();
@@ -19,21 +19,24 @@ fn exclusive_counter() {
     // spin up a worker thread
     // it will do what the main thread is doing, but in reverse..
     let thread_handle = std::thread::spawn(move || {
-        while let Ok(mut reservation) = thread_partition.reserve(1) {
-            if reservation[0] == 10 {
-                break;
-            } else {
-                reservation[0] += 1;
+        'outer: while let Ok(mut reservation) = thread_partition.reserve(100) {
+            for elem in reservation.iter_mut() {
+                if *elem == 16777216 {
+                    break 'outer
+                }
+
+                *elem += 1;
             }
         }
     });
 
-    // reserve an item at a time
-    while let Ok(mut reservation) = main_partition.reserve(1) {
-        if reservation[0] == 10 {
-            break;
-        } else {
-            reservation[0] += 1;
+    'outer: while let Ok(mut reservation) = main_partition.reserve(100) {
+        for elem in reservation.iter_mut() {
+            if *elem == 16777216 {
+                break 'outer
+            }
+
+            *elem += 1;
         }
     }
 

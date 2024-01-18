@@ -23,10 +23,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 loom = "0.7"
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 crossbeam-channel = "0.5"
+flume = "0.11.0"
+disrustor = "0.4.0"
 
-[profile.bench]
-debug = true
-#lto = true
+[profile.release]
+#debug = true
 
 [[bench]]
 name = "exclusive"
@@ -42,4 +43,12 @@ harness = false
 
 [[bench]]
 name = "crossbeam"
+harness = false
+
+[[bench]]
+name = "flume"
+harness = false
+
+[[bench]]
+name = "disrustor"
 harness = false

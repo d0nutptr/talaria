@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
+use std::ops::{BitAnd, Index, IndexMut};
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicUsize;
 use crossbeam_utils::CachePadded;
@@ -83,6 +83,7 @@ impl<M: PartitionModeT, T> Reservation<'_, M, T> {
             end_index: self.end_index,
             reservation_size: self.len,
             offset: self.start_index,
+            mask: self.ring_size - 1,
             inner_phantom: PhantomData,
         }
     }
@@ -96,6 +97,7 @@ impl<M: PartitionModeT, T> Reservation<'_, M, T> {
             end_index: self.end_index,
             reservation_size: self.len,
             offset: self.start_index,
+            mask: self.ring_size - 1,
             inner_phantom: PhantomData,
         }
     }
@@ -180,6 +182,7 @@ pub struct Iter<'r, T> {
     end_index: usize,
     reservation_size: usize,
     offset: usize,
+    mask: usize,
     inner_phantom: PhantomData<&'r ()>,
 }
 
@@ -234,6 +237,41 @@ impl<'r, T: 'r> Iterator for Iter<'r, T> {
     }
 }
 
+/// A mutable iterator created by [iter_mut()](Reservation::iter_mut).
+pub struct IterMut<'r, T> {
+    ring_ptr: NonNull<T>,
+    ring_size: usize,
+    start_index: usize,
+    end_index: usize,
+    reservation_size: usize,
+    offset: usize,
+    mask: usize,
+    inner_phantom: PhantomData<&'r ()>,
+}
+
+impl<'r, T: 'r> Iterator for IterMut<'r, T> {
+    type Item = &'r mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset == self.end_index {
+            return None;
+        }
+
+        let physical_address = self.get_physical_address(self.offset);
+        let element = unsafe { self.ring_ptr.add(physical_address).as_mut() };
+
+        self.offset = self.offset.wrapping_add(1);
+
+        Some(element)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining_length = self.end_index.wrapping_sub(self.offset);
+
+        (remaining_length, Some(remaining_length))
+    }
+}
+
 trait ProjectedIndexing {
     fn len(&self) -> usize;
     /// Maps an offset `[0, usize::MAX]` to a virtual address
@@ -269,19 +307,8 @@ impl<T> ProjectedIndexing for Iter<'_, T> {
     }
 
     fn get_physical_address(&self, virtual_address: usize) -> usize {
-        virtual_address & (self.ring_size - 1)
+        virtual_address & self.mask
     }
-}
-
-/// A mutable iterator created by [iter_mut()](Reservation::iter_mut).
-pub struct IterMut<'r, T> {
-    ring_ptr: NonNull<T>,
-    ring_size: usize,
-    start_index: usize,
-    end_index: usize,
-    reservation_size: usize,
-    offset: usize,
-    inner_phantom: PhantomData<&'r ()>,
 }
 
 impl<T> ProjectedIndexing for IterMut<'_, T> {
@@ -294,30 +321,7 @@ impl<T> ProjectedIndexing for IterMut<'_, T> {
     }
 
     fn get_physical_address(&self, virtual_address: usize) -> usize {
-        virtual_address & (self.ring_size - 1)
-    }
-}
-
-impl<'r, T: 'r> Iterator for IterMut<'r, T> {
-    type Item = &'r mut T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.offset == self.end_index {
-            return None;
-        }
-
-        let physical_address = self.get_physical_address(self.offset);
-        let element = unsafe { self.ring_ptr.add(physical_address).as_mut() };
-
-        self.offset = self.offset.wrapping_add(1);
-
-        Some(element)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_length = self.end_index.wrapping_sub(self.offset);
-
-        (remaining_length, Some(remaining_length))
+        virtual_address & self.mask
     }
 }
 

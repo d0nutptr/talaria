@@ -601,7 +601,6 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
 
     let mut spins: u32 = DEFAULT_SPINS;
     let mut registered = false;
-    let token = *&partition.token;
 
     let mut reserved_index_val = partition
         .reserved_index()
@@ -619,7 +618,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
             // if enough space is available, return the start index
             _ if available_elements >= requested && !did_underflow_occur => {
                 if registered {
-                    partition.boundary_signal().unregister(&token);
+                    partition.boundary_signal().unregister(&partition.token);
                 }
 
                 return Ok(AvailableReservation {
@@ -666,7 +665,7 @@ fn get_reserved_index_when_requested_space_available<M: PartitionModeT, T>(
                 // reset our refreshes
                 spins = DEFAULT_SPINS;
 
-                partition.boundary_signal().register(&token);
+                partition.boundary_signal().register(&partition.token);
 
                 // check condition one last time
                 partition.cached_boundary_index =
