@@ -1,11 +1,12 @@
 mod common;
 
+use std::hint::black_box;
 use std::time::Instant;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 
-use crate::common::{bench_scenarios, BenchArgs, DEFAULT_OBJECT_SIZE};
+use crate::common::bench_util::{bench_scenarios, BenchArgs, BenchmarkMessageType};
 
 pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchArgs) {
     c.bench_with_input(id, &args, |b, args| {
@@ -25,7 +26,7 @@ pub fn run_benchmark_with_args(c: &mut Criterion, id: BenchmarkId, args: BenchAr
 
             for _ in 0..iterations {
                 sender
-                    .send([0u8; DEFAULT_OBJECT_SIZE])
+                    .send(black_box(BenchmarkMessageType::default()))
                     .expect("send failed");
             }
 
@@ -41,6 +42,7 @@ fn run_benchmark(c: &mut Criterion) {
     // since mpsc doesn't expose an api for fetching multiple elements at a time,
     // we'll just ignore chunking for now in fairness to std::sync::mpsc
     bench_scenarios(c, "crossbeam-channel", run_benchmark_with_args, vec![
+        BenchArgs::new(1, 1),
         BenchArgs::new(1024, 1),
         BenchArgs::new(4096, 1),
     ]);

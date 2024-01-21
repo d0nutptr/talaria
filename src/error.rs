@@ -10,6 +10,8 @@ pub enum TalariaError {
     TooFewPartitions { requested: usize },
     #[error("number of elements in partitioned ring must be a power of two. presented: {count}")]
     ElementsNotPowerOfTwo { count: usize },
+    #[error("number of elements in partitioned ring must be less than isize::MAX / 2. presented: {count}")]
+    ElementsTooLarge { count: usize },
     #[error("partition not found. requested: {partition_id}")]
     PartitionNotFound { partition_id: usize },
     #[error("partition is not exclusive. requested: {partition_id}")]

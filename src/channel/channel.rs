@@ -1,10 +1,18 @@
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
 use crate::channel::builder::Builder;
 use crate::error::{TalariaError, TalariaResult};
-use crate::partition::{Concurrent, Exclusive, Partition, PartitionMode, PartitionState2};
+use crate::partition::{
+    Concurrent,
+    Exclusive,
+    Partition,
+    PartitionMode,
+    PartitionState,
+    PartitionT,
+};
 use crate::sync_types::sync::Arc;
 
 /// Manages a fixed collection of objects and partitions to manage these objects.
@@ -56,9 +64,7 @@ impl<T> Channel<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Exclusive, T>> {
-        let inner = self.inner.clone();
-
-        Partition::<Exclusive, T>::new(partition_id, inner, &self.partition_state)
+        Partition::<Exclusive, T>::new(partition_id, self.inner.clone(), &self.partition_state)
     }
 
     /// Acquires access to the specified concurrent partition
@@ -69,9 +75,7 @@ impl<T> Channel<T> {
         &self,
         partition_id: usize,
     ) -> TalariaResult<Partition<Concurrent, T>> {
-        let inner = self.inner.clone();
-
-        Partition::<Concurrent, T>::new(partition_id, inner, &self.partition_state)
+        Partition::<Concurrent, T>::new(partition_id, self.inner.clone(), &self.partition_state)
     }
 }
 
@@ -85,9 +89,9 @@ impl<T> Deref for Channel<T> {
 
 #[derive(Debug)]
 pub struct Inner<T> {
-    ring_ptr: NonNull<T>,
+    ring_ptr: NonNull<UnsafeCell<T>>,
     ring_size: usize,
-    partition_state: PartitionState2,
+    partition_state: PartitionState,
 }
 
 impl<T> Inner<T> {
@@ -115,11 +119,22 @@ impl<T> Inner<T> {
             });
         }
 
+        if data.len() > (isize::MAX / 2) as usize {
+            return Err(TalariaError::ElementsTooLarge {
+                count: data.len(),
+            });
+        }
+
         if data.is_empty() {
             return Err(TalariaError::NoElements);
         }
 
-        let partition_state = crate::partition::PartitionState2::new(partition_definitions);
+        let partition_state = PartitionState::new(partition_definitions);
+
+        let data = data
+            .into_iter()
+            .map(|elem| UnsafeCell::new(elem))
+            .collect::<Vec<_>>();
 
         let mut data = ManuallyDrop::new(data);
         // shrink to fit so we only need to track length instead of length + capacity
@@ -134,7 +149,7 @@ impl<T> Inner<T> {
         })
     }
 
-    pub(crate) fn ring_ptr(&self) -> NonNull<T> {
+    pub(crate) fn ring_ptr(&self) -> NonNull<UnsafeCell<T>> {
         self.ring_ptr
     }
 
@@ -157,10 +172,11 @@ impl<T> Drop for Inner<T> {
 #[cfg(any(test, loom))]
 mod test_utils {
     use crate::channel::channel::Inner;
+    use crate::partition::PartitionState;
 
     impl<T> Inner<T> {
-        // pub fn introspect_partition_states(&self) -> &Vec<crate::partition::PartitionState> {
-        //     // &self.partition_state
-        // }
+        pub fn introspect_partition_state(&self) -> &PartitionState {
+            &self.partition_state
+        }
     }
 }

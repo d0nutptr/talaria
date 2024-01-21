@@ -1,7 +1,8 @@
+use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::ops::{BitAnd, Index, IndexMut};
+use std::ops::{Index, IndexMut};
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicUsize;
+
 use crossbeam_utils::CachePadded;
 
 use crate::error::TalariaResult;
@@ -9,13 +10,14 @@ use crate::partition::mode::PartitionModeT;
 use crate::partition::wait::{BlockingWaitStrategy, WaitStrategy};
 use crate::partition::Exclusive;
 use crate::sync_types::hint::spin_loop;
+use crate::sync_types::sync::atomic::AtomicUsize;
 
 /// Represents exclusive ownership to a section of data in a partition.
 ///
 /// If you have a reservation, all of the data inside of the reservation are safe to read from and
 /// write to. Reservations are created with partition's various reservation methods.
 pub struct Reservation<'p, M: PartitionModeT, T> {
-    ring_ptr: NonNull<T>,
+    ring_ptr: NonNull<UnsafeCell<T>>,
     ring_size: usize,
     start_index: usize,
     end_index: usize,
@@ -28,7 +30,7 @@ pub struct Reservation<'p, M: PartitionModeT, T> {
 
 impl<'p, M: PartitionModeT + 'p, T> Reservation<'p, M, T> {
     pub(crate) fn new(
-        ring_ptr: NonNull<T>,
+        ring_ptr: NonNull<UnsafeCell<T>>,
         ring_size: usize,
         start_index: usize,
         end_index: usize,
@@ -78,7 +80,6 @@ impl<M: PartitionModeT, T> Reservation<'_, M, T> {
     pub fn iter(&self) -> Iter<T> {
         Iter {
             ring_ptr: self.ring_ptr,
-            ring_size: self.ring_size,
             start_index: self.start_index,
             end_index: self.end_index,
             reservation_size: self.len,
@@ -92,7 +93,6 @@ impl<M: PartitionModeT, T> Reservation<'_, M, T> {
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
             ring_ptr: self.ring_ptr,
-            ring_size: self.ring_size,
             start_index: self.start_index,
             end_index: self.end_index,
             reservation_size: self.len,
@@ -140,6 +140,8 @@ impl<M: PartitionModeT, T> Drop for Reservation<'_, M, T> {
             return;
         }
 
+        const MAX_SPIN: usize = 100;
+        let mut spin = 1;
         // todo implement a less expensive spinlock here
         // wait for our turn to move the committed index forward
         while self
@@ -147,10 +149,12 @@ impl<M: PartitionModeT, T> Drop for Reservation<'_, M, T> {
             .load(std::sync::atomic::Ordering::Acquire)
             != self.start_index
         {
-            const SPIN: usize = 16;
-
-            for _ in 0..SPIN {
+            for _ in 0..spin {
                 spin_loop();
+            }
+
+            if spin < MAX_SPIN {
+                spin <<= 1;
             }
 
             #[cfg(loom)]
@@ -174,18 +178,6 @@ impl<M: PartitionModeT, T> Drop for Reservation<'_, M, T> {
     }
 }
 
-/// A read-only iterator created by [iter()](Reservation::iter).
-pub struct Iter<'r, T> {
-    ring_ptr: NonNull<T>,
-    ring_size: usize,
-    start_index: usize,
-    end_index: usize,
-    reservation_size: usize,
-    offset: usize,
-    mask: usize,
-    inner_phantom: PhantomData<&'r ()>,
-}
-
 impl<M: PartitionModeT, T> Index<usize> for Reservation<'_, M, T> {
     type Output = T;
 
@@ -197,7 +189,7 @@ impl<M: PartitionModeT, T> Index<usize> for Reservation<'_, M, T> {
         let virtual_address = self.get_virtual_address(index);
         let physical_address = self.get_physical_address(virtual_address);
 
-        unsafe { self.ring_ptr.add(physical_address).as_ref() }
+        unsafe { &*self.ring_ptr.add(physical_address).as_ref().get() }
     }
 }
 
@@ -210,8 +202,19 @@ impl<M: PartitionModeT, T> IndexMut<usize> for Reservation<'_, M, T> {
         let virtual_address = self.get_virtual_address(index);
         let physical_address = self.get_physical_address(virtual_address);
 
-        unsafe { self.ring_ptr.add(physical_address).as_mut() }
+        unsafe { &mut *self.ring_ptr.add(physical_address).as_ref().get() }
     }
+}
+
+/// A read-only iterator created by [iter()](Reservation::iter).
+pub struct Iter<'r, T> {
+    ring_ptr: NonNull<UnsafeCell<T>>,
+    start_index: usize,
+    end_index: usize,
+    reservation_size: usize,
+    offset: usize,
+    mask: usize,
+    inner_phantom: PhantomData<&'r ()>,
 }
 
 impl<'r, T: 'r> Iterator for Iter<'r, T> {
@@ -223,7 +226,7 @@ impl<'r, T: 'r> Iterator for Iter<'r, T> {
         }
 
         let physical_address = self.get_physical_address(self.offset);
-        let element = unsafe { self.ring_ptr.add(physical_address).as_ref() };
+        let element = unsafe { &*self.ring_ptr.add(physical_address).as_ref().get() };
 
         self.offset = self.offset.wrapping_add(1);
 
@@ -239,8 +242,7 @@ impl<'r, T: 'r> Iterator for Iter<'r, T> {
 
 /// A mutable iterator created by [iter_mut()](Reservation::iter_mut).
 pub struct IterMut<'r, T> {
-    ring_ptr: NonNull<T>,
-    ring_size: usize,
+    ring_ptr: NonNull<UnsafeCell<T>>,
     start_index: usize,
     end_index: usize,
     reservation_size: usize,
@@ -258,7 +260,7 @@ impl<'r, T: 'r> Iterator for IterMut<'r, T> {
         }
 
         let physical_address = self.get_physical_address(self.offset);
-        let element = unsafe { self.ring_ptr.add(physical_address).as_mut() };
+        let element = unsafe { &mut *self.ring_ptr.add(physical_address).as_ref().get() };
 
         self.offset = self.offset.wrapping_add(1);
 

@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use talaria::channel::Channel;
+use talaria::partition::PartitionT;
 
 const MAX_TEST_TIME: Duration = Duration::from_secs(3 * 60); // 3 minutes
 const MAX_BRANCHES: usize = 25_000_000;
@@ -21,15 +22,14 @@ fn get_loom_testing_model(preemption_bound: impl Into<Option<usize>>) -> loom::m
 fn check_channel_invariants<T>(channel: &Channel<T>) {
     loom::stop_exploring();
     let channel_size = channel.len();
-    channel
-        .introspect_partition_states()
-        .iter()
-        .map(|partition_state| {
-            let inner = partition_state.introspect_inner();
-            let partition_id = *inner.partition_id;
-            let committed_index = inner.committed_index.load(Ordering::SeqCst);
-            let reservation_index = inner.reserved_index.load(Ordering::SeqCst);
-            let boundary_index = partition_state.introspect_read_boundary_index();
+    let partition_state = channel.introspect_partition_state();
+
+    (0 .. partition_state.introspect_partition_modes().len())
+        .map(|offset| {
+            let partition_id = offset;
+            let committed_index = partition_state.introspect_committed_index(offset);
+            let reservation_index = partition_state.introspect_reserved_index(offset);
+            let boundary_index = partition_state.introspect_boundary_index(offset);
 
             (partition_id, committed_index, reservation_index, boundary_index)
         })

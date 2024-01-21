@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use talaria::channel::Channel;
+use talaria::partition::PartitionT;
 
 const MAX_TEST_TIME: Duration = Duration::from_secs(3 * 60); // 3 minutes
 const MAX_BRANCHES: usize = 25_000_000;

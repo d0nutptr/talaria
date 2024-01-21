@@ -1,4 +1,5 @@
 use talaria::channel::Channel;
+use talaria::partition::PartitionT;
 
 #[test]
 fn concurrent_blocking_ping_pong() {
